@@ -66,8 +66,7 @@ Reusable workflows cannot access secrets from the workflow repository. Define re
 
 Required secrets for `codex-review.yml`:
 
-- `CODEX_AUTH_JSON_B64` – Base64-encoded Codex `auth.json` (from ChatGPT subscription auth).
-- `GITHUB_TOKEN` – Automatically provided, but you may supply a PAT if needed.
+- `CODEX_AUTH_JSON_B64` – Base64-encoded Codex `auth.json` (from ChatGPT subscription auth). The default `GITHUB_TOKEN` is available automatically.
 
 Required secrets for `release.yml`:
 

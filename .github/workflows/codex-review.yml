@@ -32,9 +32,6 @@ on:
       CODEX_AUTH_JSON_B64:
         description: Base64 encoded auth.json for Codex CLI (ChatGPT subscription auth).
         required: true
-      GITHUB_TOKEN:
-        description: Token used to collect metadata and submit the review.
-        required: true
 
 permissions:
   contents: read
