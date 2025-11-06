@@ -2,7 +2,6 @@ name: Codex Release
 
 on:
   workflow_call:
-    description: Reusable workflow to generate Codex-powered release notes and publish a GitHub release.
     inputs:
       tag_name:
         description: Tag to create or update (e.g. v0.1.0).
@@ -98,11 +97,33 @@ jobs:
         if: inputs.run_tests
         run: go test ${{ inputs.test_flags }}
 
+      - name: Derive shared assets location
+        id: shared_meta
+        run: |
+          WF_REF="${{ github.workflow_ref }}"
+          REPO_WITH_PATH="${WF_REF%@*}"
+          REF="${WF_REF##*@}"
+          REPO="${REPO_WITH_PATH%%/.github/*}"
+          case "$REF" in
+            refs/heads/*) REF="${REF#refs/heads/}" ;;
+            refs/tags/*) REF="${REF#refs/tags/}" ;;
+          esac
+          if [ -z "$REPO" ]; then
+            REPO="activadee/codex-shared-workflows"
+          fi
+          if [ -z "$REF" ]; then
+            REF="main"
+          fi
+          {
+            echo "repo=$REPO"
+            echo "ref=$REF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout shared workflow assets
         uses: actions/checkout@v5
         with:
-          repository: ${{ github.workflow_ref.split('/.github/')[0] }}
-          ref: ${{ github.workflow_ref.split('@')[1] }}
+          repository: ${{ steps.shared_meta.outputs.repo }}
+          ref: ${{ steps.shared_meta.outputs.ref }}
           path: __codex_shared
 
       - name: Determine previous tag

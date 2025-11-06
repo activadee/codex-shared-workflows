@@ -2,7 +2,6 @@ name: Go Tests
 
 on:
   workflow_call:
-    description: Reusable workflow that runs go test across the repository.
     inputs:
       go_version:
         description: Go version to install (ignored if go_version_file is set).

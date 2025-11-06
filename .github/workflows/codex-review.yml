@@ -2,8 +2,6 @@ name: Codex Review
 
 on:
   workflow_call:
-    description: |
-      Reusable workflow that runs a Codex-powered PR review using activadee/codex-action.
     inputs:
       codex_action_ref:
         description: Ref for activadee/codex-action (branch, tag, or SHA).
@@ -69,11 +67,33 @@ jobs:
       - name: Fetch base reference
         run: git fetch --no-tags origin ${{ github.event.pull_request.base.ref }}
 
+      - name: Derive shared assets location
+        id: shared_meta
+        run: |
+          WF_REF="${{ github.workflow_ref }}"
+          REPO_WITH_PATH="${WF_REF%@*}"
+          REF="${WF_REF##*@}"
+          REPO="${REPO_WITH_PATH%%/.github/*}"
+          case "$REF" in
+            refs/heads/*) REF="${REF#refs/heads/}" ;;
+            refs/tags/*) REF="${REF#refs/tags/}" ;;
+          esac
+          if [ -z "$REPO" ]; then
+            REPO="activadee/codex-shared-workflows"
+          fi
+          if [ -z "$REF" ]; then
+            REF="main"
+          fi
+          {
+            echo "repo=$REPO"
+            echo "ref=$REF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout shared workflow assets
         uses: actions/checkout@v5
         with:
-          repository: ${{ github.workflow_ref.split('/.github/')[0] }}
-          ref: ${{ github.workflow_ref.split('@')[1] }}
+          repository: ${{ steps.shared_meta.outputs.repo }}
+          ref: ${{ steps.shared_meta.outputs.ref }}
           path: __codex_shared
 
       - name: Collect review inputs
