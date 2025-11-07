@@ -19,89 +19,13 @@ jobs:
     permissions:
       contents: read
       issues: write
-    env:
-      MAX_LABELS: ${{ inputs.max_labels }}
     steps:
-      - name: Ensure max label bound
-        run: |
-          MAX=${MAX_LABELS:-3}
-          if [ "$MAX" -lt 1 ]; then MAX=1; fi
-          if [ "$MAX" -gt 3 ]; then MAX=3; fi
-          echo "MAX_LABELS=$MAX" >> "$GITHUB_ENV"
-
-      - name: Checkout shared workflow assets
-        uses: actions/checkout@v5
+      - name: Prepare Codex auto-label assets
+        id: prepare
+        uses: ./.github/actions/auto-label-prepare
         with:
-          repository: activadee/codex-shared-workflows
-          ref: main
-          path: __codex_shared
-
-      - name: Prepare Codex prompt
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-
-            if (!context.payload.issue) {
-              core.setFailed('This workflow must be triggered from an issue event.');
-              return;
-            }
-
-            const issue = context.payload.issue;
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const maxLabels = Math.max(1, Math.min(3, parseInt(process.env.MAX_LABELS || '3', 10)));
-
-            const allLabels = await github.paginate(
-              github.rest.issues.listLabelsForRepo,
-              { owner, repo, per_page: 100 }
-            );
-
-            const issueLabels = (issue.labels || []).map((label) =>
-              typeof label === 'string' ? label : label.name
-            ).filter(Boolean);
-
-            const promptTemplate = fs.readFileSync(
-              path.join('__codex_shared', '.github', 'prompts', 'codex-auto-label.md'),
-              'utf8'
-            );
-
-            const existingLabelsSection = allLabels.length
-              ? allLabels.map((label) => `- ${label.name}`).join('\n')
-              : '- (no labels defined)';
-
-            const truncateBody = (body) => {
-              if (!body) return '(no body provided)';
-              const limit = 4000;
-              if (body.length <= limit) return body;
-              return `${body.slice(0, limit)}\n[[truncated]]`;
-            };
-
-            const populatedPrompt = promptTemplate
-              .replace('{{MAX_LABELS}}', maxLabels.toString())
-              .replace('{{EXISTING_LABELS}}', existingLabelsSection)
-              .replace('{{ISSUE_TITLE}}', issue.title ?? '(no title)')
-              .replace('{{ISSUE_BODY}}', truncateBody(issue.body))
-              .replace('{{CURRENT_LABELS}}', issueLabels.length ? issueLabels.join(', ') : '(none)');
-
-            fs.writeFileSync('codex_prompt.md', populatedPrompt, 'utf8');
-            fs.writeFileSync(
-              'repo-labels.json',
-              JSON.stringify(allLabels.map((label) => label.name)),
-              'utf8'
-            );
-            fs.writeFileSync(
-              'issue-number.txt',
-              issue.number.toString(),
-              'utf8'
-            );
-
-            core.info(`Prepared prompt for issue #${issue.number} with ${allLabels.length} repository labels.`);
-
-      - name: Load output schema
-        run: |
-          echo "CODEX_OUTPUT_SCHEMA=$(jq -c . __codex_shared/.github/prompts/codex-auto-label-schema.json)" >> "$GITHUB_ENV"
+          max-labels: ${{ inputs.max_labels }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate labels with Codex
         id: run_codex
@@ -111,86 +35,12 @@ jobs:
           safety-strategy: drop-sudo
           prompt-file: codex_prompt.md
           output-file: codex-output.json
-          output-schema: ${{ env.CODEX_OUTPUT_SCHEMA }}
+          output-schema: ${{ steps.prepare.outputs.codex-output-schema }}
           model: gpt-5
           effort: medium
 
       - name: Apply labels
-        uses: actions/github-script@v7
+        uses: ./.github/actions/auto-label-apply
         with:
-          script: |
-            const fs = require('fs');
-
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const issueNumber = parseInt(fs.readFileSync('issue-number.txt', 'utf8').trim(), 10);
-
-            const maxLabels = Math.max(1, Math.min(3, parseInt(process.env.MAX_LABELS || '3', 10)));
-
-            const repoLabels = new Set(JSON.parse(fs.readFileSync('repo-labels.json', 'utf8')));
-
-            let desiredLabels = [];
-            try {
-              const result = JSON.parse(fs.readFileSync('codex-output.json', 'utf8'));
-              if (Array.isArray(result.labels)) {
-                desiredLabels = result.labels
-                  .map((label) => (typeof label === 'string' ? label.trim() : ''))
-                  .filter((label) => label.length > 0);
-              }
-            } catch (error) {
-              core.warning(`Failed to parse Codex output: ${error.message}`);
-            }
-
-            if (!desiredLabels.length) {
-              core.info('Codex returned no labels; skipping.');
-              return;
-            }
-
-            // Deduplicate while preserving order
-            const uniqueLabels = [];
-            for (const label of desiredLabels) {
-              if (!uniqueLabels.includes(label)) {
-                uniqueLabels.push(label);
-              }
-              if (uniqueLabels.length >= maxLabels) {
-                break;
-              }
-            }
-
-            const ensuredLabels = [];
-            for (const label of uniqueLabels) {
-              if (!repoLabels.has(label)) {
-                core.info(`Creating new label '${label}'`);
-                try {
-                  await github.rest.issues.createLabel({
-                    owner,
-                    repo,
-                    name: label,
-                    color: '0ea5e9',
-                    description: 'Auto-generated by Codex labeler'
-                  });
-                  repoLabels.add(label);
-                } catch (error) {
-                  core.warning(`Failed to create label '${label}': ${error.message}`);
-                  continue;
-                }
-              }
-              ensuredLabels.push(label);
-              if (ensuredLabels.length >= maxLabels) {
-                break;
-              }
-            }
-
-            if (!ensuredLabels.length) {
-              core.info('No labels to apply after validation.');
-              return;
-            }
-
-            await github.rest.issues.addLabels({
-              owner,
-              repo,
-              issue_number: issueNumber,
-              labels: ensuredLabels
-            });
-
-            core.info(`Applied labels to issue #${issueNumber}: ${ensuredLabels.join(', ')}`);
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          max-labels: ${{ steps.prepare.outputs.max-labels }}

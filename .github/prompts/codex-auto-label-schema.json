@@ -8,9 +8,25 @@
       "minItems": 0,
       "maxItems": 3,
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 50
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{6}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 140
+          }
+        },
+        "required": ["name", "color", "description"],
+        "additionalProperties": false
       }
     }
   },

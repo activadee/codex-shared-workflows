@@ -1,0 +1,137 @@
+name: "Prepare Codex auto-label assets"
+description: "Clamp max labels, fetch repository label metadata, and build the Codex prompt/schema files."
+inputs:
+  max-labels:
+    description: "Requested maximum number of labels (1-3)."
+    required: false
+    default: "3"
+  github-token:
+    description: "GitHub token with repo scope for label metadata."
+    required: true
+outputs:
+  max-labels:
+    description: "Clamped max label count."
+    value: ${{ steps.bounds.outputs.max }}
+  codex-output-schema:
+    description: "JSON schema for Codex label output."
+    value: ${{ steps.schema.outputs.schema }}
+runs:
+  using: "composite"
+  steps:
+    - id: bounds
+      name: Clamp max labels
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        raw="${{ inputs.max-labels }}"
+        if [[ -z "$raw" ]]; then
+          raw=3
+        fi
+        if ! [[ "$raw" =~ ^[0-9]+$ ]]; then
+          raw=3
+        fi
+
+        max="$raw"
+        if [ "$max" -lt 1 ]; then
+          max=1
+        fi
+        if [ "$max" -gt 3 ]; then
+          max=3
+        fi
+
+        echo "max=$max" >> "$GITHUB_OUTPUT"
+
+    - name: Checkout shared workflow assets
+      uses: actions/checkout@v5
+      with:
+        repository: activadee/codex-shared-workflows
+        ref: main
+        path: __codex_shared
+
+    - name: Prepare Codex prompt
+      uses: actions/github-script@v7
+      env:
+        MAX_LABELS: ${{ steps.bounds.outputs.max }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+
+          if (!context.payload.issue) {
+            core.setFailed('This workflow must be triggered from an issue event.');
+            return;
+          }
+
+          const issue = context.payload.issue;
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          const maxLabels = Math.max(1, Math.min(3, parseInt(process.env.MAX_LABELS || '3', 10)));
+
+          const allLabels = await github.paginate(
+            github.rest.issues.listLabelsForRepo,
+            { owner, repo, per_page: 100 }
+          );
+
+          const issueLabels = (issue.labels || [])
+            .map((label) => (typeof label === 'string' ? label : label.name))
+            .filter(Boolean);
+
+          const promptTemplate = fs.readFileSync(
+            path.join('__codex_shared', '.github', 'prompts', 'codex-auto-label.md'),
+            'utf8'
+          );
+
+          const formatColor = (value) => {
+            if (!value) return '(no color)';
+            return `#${String(value).toLowerCase()}`;
+          };
+
+          const formatDescription = (value) => {
+            if (!value || !String(value).trim()) {
+              return '(no description)';
+            }
+            return String(value).trim();
+          };
+
+          const existingLabelsSection = allLabels.length
+            ? allLabels
+                .map(
+                  (label) =>
+                    `- ${label.name} (color: ${formatColor(label.color)}, description: ${formatDescription(label.description)})`
+                )
+                .join('\n')
+            : '- (no labels defined)';
+
+          const truncateBody = (body) => {
+            if (!body) return '(no body provided)';
+            const limit = 4000;
+            if (body.length <= limit) return body;
+            return `${body.slice(0, limit)}\n[[truncated]]`;
+          };
+
+          const populatedPrompt = promptTemplate
+            .replace('{{MAX_LABELS}}', maxLabels.toString())
+            .replace('{{EXISTING_LABELS}}', existingLabelsSection)
+            .replace('{{ISSUE_TITLE}}', issue.title ?? '(no title)')
+            .replace('{{ISSUE_BODY}}', truncateBody(issue.body))
+            .replace('{{CURRENT_LABELS}}', issueLabels.length ? issueLabels.join(', ') : '(none)');
+
+          fs.writeFileSync('codex_prompt.md', populatedPrompt, 'utf8');
+          fs.writeFileSync(
+            'repo-labels.json',
+            JSON.stringify(allLabels.map((label) => label.name)),
+            'utf8'
+          );
+          fs.writeFileSync('issue-number.txt', issue.number.toString(), 'utf8');
+
+          core.info(`Prepared prompt for issue #${issue.number} with ${allLabels.length} repository labels.`);
+
+    - id: schema
+      name: Load output schema
+      shell: bash
+      run: |
+        set -euo pipefail
+        schema=$(jq -c . __codex_shared/.github/prompts/codex-auto-label-schema.json)
+        echo "schema=$schema" >> "$GITHUB_OUTPUT"
