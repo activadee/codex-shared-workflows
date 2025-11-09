@@ -56,8 +56,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOC_REPORT_PATH: doc-sync-report.md
-      DOC_SKIP_TAG: "[doc-sync]"
-      SKIP_DOC_SYNC: 'false'
     steps:
       - name: Resolve pull request context
         id: pr_context
@@ -80,7 +78,7 @@ jobs:
             }
 
             if (!pr) {
-              core.setOutput('skip', 'true');
+              core.setOutput('proceed', 'false');
               core.info('No pull request context detected in this event.');
               return;
             }
@@ -91,60 +89,42 @@ jobs:
               core.info(`Head repository ${headRepoFull || '(unknown)'} differs from ${repoFull}; skipping to avoid pushing to forks.`);
             }
 
-            core.setOutput('skip', sameRepo ? 'false' : 'true');
+            core.setOutput('proceed', sameRepo ? 'true' : 'false');
             core.setOutput('number', String(pr.number));
             core.setOutput('base_ref', pr.base?.ref || '');
             core.setOutput('head_ref', pr.head?.ref || '');
             core.setOutput('head_sha', pr.head?.sha || '');
 
-      - name: Export PR metadata
-        run: |
-          if [ "${{ steps.pr_context.outputs.skip }}" = "true" ]; then
-            echo "SKIP_DOC_SYNC=true" >> "$GITHUB_ENV"
-          else
-            {
-              echo "DOC_PR_NUMBER=${{ steps.pr_context.outputs.number }}"
-              echo "DOC_BASE_REF=${{ steps.pr_context.outputs.base_ref }}"
-              echo "DOC_HEAD_REF=${{ steps.pr_context.outputs.head_ref }}"
-              echo "DOC_HEAD_SHA=${{ steps.pr_context.outputs.head_sha }}"
-            } >> "$GITHUB_ENV"
-          fi
-
       - name: Checkout target repository
-        if: env.SKIP_DOC_SYNC != 'true'
+        if: steps.pr_context.outputs.proceed == 'true'
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ env.DOC_HEAD_SHA }}
+          ref: ${{ steps.pr_context.outputs.head_sha }}
 
       - name: Fetch base reference
-        if: env.SKIP_DOC_SYNC != 'true'
-        run: git fetch --no-tags origin ${{ env.DOC_BASE_REF }}
+        if: steps.pr_context.outputs.proceed == 'true'
+        run: git fetch --no-tags origin ${{ steps.pr_context.outputs.base_ref }}
+
+      - name: Collect commit summary
+        if: steps.pr_context.outputs.proceed == 'true'
+        run: |
+          git log --no-merges --pretty=format:'- %s (%h)' \
+            origin/${{ steps.pr_context.outputs.base_ref }}..${{ steps.pr_context.outputs.head_sha }} > doc-commits.md
+          if [ ! -s doc-commits.md ]; then
+            echo "- No commits detected between base and head." > doc-commits.md
+          fi
 
       - name: Ignore doc summary file
-        if: env.SKIP_DOC_SYNC != 'true'
+        if: steps.pr_context.outputs.proceed == 'true'
         run: |
           mkdir -p .git/info
           if ! grep -qx "$DOC_REPORT_PATH" .git/info/exclude 2>/dev/null; then
             echo "$DOC_REPORT_PATH" >> .git/info/exclude
           fi
 
-      - name: Check for doc-sync skip marker
-        id: skip_marker
-        if: env.SKIP_DOC_SYNC != 'true'
-        run: |
-          set -euo pipefail
-          last_message=$(git log -1 --pretty=%B || true)
-          if echo "$last_message" | grep -q "$DOC_SKIP_TAG"; then
-            echo "SKIP_DOC_SYNC=true" >> "$GITHUB_ENV"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Latest commit contains $DOC_SKIP_TAG, skipping to avoid loops."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout shared workflow assets
-        if: env.SKIP_DOC_SYNC != 'true'
+        if: steps.pr_context.outputs.proceed == 'true'
         uses: actions/checkout@v5
         with:
           repository: activadee/codex-shared-workflows
@@ -152,34 +132,34 @@ jobs:
           path: __codex_shared
 
       - name: Write documentation scope manifest
-        if: env.SKIP_DOC_SYNC != 'true'
+        if: steps.pr_context.outputs.proceed == 'true'
         env:
           DOC_GLOBS: ${{ inputs.doc_globs }}
           DOC_GLOBS_PATH: doc-globs.txt
         run: node __codex_shared/.github/scripts/doc-sync/write_doc_globs.js
 
       - name: Prepare Codex prompt
-        if: env.SKIP_DOC_SYNC != 'true'
+        if: steps.pr_context.outputs.proceed == 'true'
         env:
-          BASE_REF: ${{ env.DOC_BASE_REF }}
-          PR_NUMBER: ${{ env.DOC_PR_NUMBER }}
+          BASE_REF: ${{ steps.pr_context.outputs.base_ref }}
+          PR_NUMBER: ${{ steps.pr_context.outputs.number }}
           REPORT_PATH: ${{ env.DOC_REPORT_PATH }}
           TEMPLATE_PATH: __codex_shared/.github/prompts/codex-doc-sync.md
           DOC_GLOBS_PATH: doc-globs.txt
           PROMPT_PATH: codex_prompt.md
+          COMMITS_PATH: doc-commits.md
         run: node __codex_shared/.github/scripts/doc-sync/prepare_prompt.js
 
       - name: Run Codex doc sync
-        if: env.SKIP_DOC_SYNC != 'true'
+        if: steps.pr_context.outputs.proceed == 'true'
         id: run_codex
         uses: activadee/codex-action@main
         env:
           DOC_REPORT_PATH: ${{ env.DOC_REPORT_PATH }}
-          DOC_SKIP_TAG: ${{ env.DOC_SKIP_TAG }}
-          DOC_BASE_REF: ${{ env.DOC_BASE_REF }}
-          DOC_HEAD_REF: ${{ env.DOC_HEAD_REF }}
-          DOC_HEAD_SHA: ${{ env.DOC_HEAD_SHA }}
-          DOC_PR_NUMBER: ${{ env.DOC_PR_NUMBER }}
+          DOC_BASE_REF: ${{ steps.pr_context.outputs.base_ref }}
+          DOC_HEAD_REF: ${{ steps.pr_context.outputs.head_ref }}
+          DOC_HEAD_SHA: ${{ steps.pr_context.outputs.head_sha }}
+          DOC_PR_NUMBER: ${{ steps.pr_context.outputs.number }}
           DOC_GLOBS: ${{ inputs.doc_globs }}
         with:
           codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
@@ -190,7 +170,7 @@ jobs:
           codex-args: ${{ inputs.codex_args }}
 
       - name: Detect documentation changes
-        if: env.SKIP_DOC_SYNC != 'true'
+        if: steps.pr_context.outputs.proceed == 'true'
         id: detect_docs
         run: |
           node __codex_shared/.github/scripts/doc-sync/detect_doc_changes.js \
@@ -203,14 +183,14 @@ jobs:
           fi
 
       - name: Docs already up to date
-        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'false'
+        if: steps.pr_context.outputs.proceed == 'true' && steps.detect_docs.outputs.changed == 'false'
         run: cat "$DOC_REPORT_PATH" 2>/dev/null || echo "Documentation already matched the code changes."
 
       - name: Commit documentation updates
-        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'true'
+        if: steps.pr_context.outputs.proceed == 'true' && steps.detect_docs.outputs.changed == 'true'
         id: commit_docs
         env:
-          PR_NUMBER: ${{ env.DOC_PR_NUMBER }}
+          PR_NUMBER: ${{ steps.pr_context.outputs.number }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -220,11 +200,11 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Push documentation updates
-        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'true'
-        run: git push origin HEAD:${{ env.DOC_HEAD_REF }}
+        if: steps.pr_context.outputs.proceed == 'true' && steps.detect_docs.outputs.changed == 'true'
+        run: git push origin HEAD:${{ steps.pr_context.outputs.head_ref }}
 
       - name: Comment on pull request
-        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'true' && inputs.comment_on_update
+        if: steps.pr_context.outputs.proceed == 'true' && steps.detect_docs.outputs.changed == 'true' && inputs.comment_on_update
         uses: actions/github-script@v7
         env:
           REPORT_PATH: ${{ env.DOC_REPORT_PATH }}

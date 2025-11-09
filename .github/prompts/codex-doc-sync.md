@@ -7,6 +7,8 @@ You are running inside a GitHub Actions job for a pull request. Your job is to k
 - Pull request number: `{{PR_NUMBER}}`
 - Documentation scope includes **only** files matching these globs:
 {{DOC_SCOPE}}
+- Commits included in this review:
+{{COMMIT_SUMMARY}}
 - Write your summary to `{{REPORT_PATH}}` (overwrite it every run).
 
 ## Responsibilities
