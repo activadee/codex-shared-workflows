@@ -16,6 +16,9 @@ Reusable GitHub Actions workflows for Codex-enabled repositories. These workflow
 - `.github/workflows/auto-label.yml`  
   Calls Codex to suggest up to three labels for new or updated issues, creating labels when needed.
 
+- `.github/workflows/codex-doc-sync.yml`  
+  Keeps Markdown and `docs/` content aligned with pull request changes. Codex reviews the diff, edits documentation when necessary, and pushes a `[skip ci][doc-sync]` commit plus an optional PR comment summarizing the updates.
+
 ## Using the workflows
 
 Create a workflow in another repository and reference the desired file via `uses`. Pin to a tag or commit once published.
@@ -85,6 +88,10 @@ Required secrets for `auto-label.yml`:
 
 - `CODEX_AUTH_JSON_B64` – Codex credentials for label generation.
 
+Required secrets for `codex-doc-sync.yml`:
+
+- `CODEX_AUTH_JSON_B64` – Codex credentials for analyzing diffs and editing documentation.
+
 ### Optional inputs
 
 `codex-review.yml` accepts the following inputs:
@@ -132,6 +139,16 @@ Outputs:
 | Input | Default | Notes |
 | --- | --- | --- |
 | `max_labels` | `3` | Upper bound (1–3) on labels applied to each issue. |
+
+`codex-doc-sync.yml` inputs:
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| `doc_globs` | `docs/**`, `**/*.md`, `README*` | Newline-separated glob list that defines which files count as documentation. |
+| `comment_on_update` | `true` | Post a PR comment summarizing the automated doc edits when changes are pushed. |
+| `safety_strategy` | `drop-sudo` | Passed directly to `activadee/codex-action`. |
+| `model` / `effort` | _empty_ | Optional overrides for Codex model and reasoning effort. |
+| `codex_args` | _empty_ | Additional CLI arguments forwarded to `codex exec`. |
 
 ## Repository layout
 

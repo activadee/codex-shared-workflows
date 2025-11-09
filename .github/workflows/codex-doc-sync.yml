@@ -1,0 +1,216 @@
+name: Codex Doc Sync
+
+on:
+  workflow_call:
+    inputs:
+      doc_globs:
+        description: |-
+          Newline-separated glob patterns that define documentation files (e.g., docs/**, **/*.md, README*).
+        required: false
+        type: string
+        default: |
+          docs/**
+          **/*.md
+          README*
+      comment_on_update:
+        description: Post a pull request comment whenever docs were updated.
+        required: false
+        type: boolean
+        default: true
+      safety_strategy:
+        description: Safety strategy passed to Codex (drop-sudo/read-only/unprivileged-user/unsafe).
+        required: false
+        type: string
+        default: drop-sudo
+      model:
+        description: Optional Codex model override.
+        required: false
+        type: string
+        default: ""
+      effort:
+        description: Optional Codex reasoning effort override.
+        required: false
+        type: string
+        default: ""
+      codex_args:
+        description: Additional arguments passed to codex exec (JSON array or shell string).
+        required: false
+        type: string
+        default: ""
+    secrets:
+      CODEX_AUTH_JSON_B64:
+        description: Base64 encoded auth.json for Codex CLI.
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: codex-doc-sync-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    if: github.event.pull_request != null && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      DOC_REPORT_PATH: doc-sync-report.md
+      DOC_SKIP_TAG: "[doc-sync]"
+      SKIP_DOC_SYNC: 'false'
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base reference
+        run: git fetch --no-tags origin ${{ github.event.pull_request.base.ref }}
+
+      - name: Ignore doc summary file
+        run: |
+          mkdir -p .git/info
+          if ! grep -qx "$DOC_REPORT_PATH" .git/info/exclude 2>/dev/null; then
+            echo "$DOC_REPORT_PATH" >> .git/info/exclude
+          fi
+
+      - name: Check for doc-sync skip marker
+        id: skip_marker
+        run: |
+          set -euo pipefail
+          last_message=$(git log -1 --pretty=%B || true)
+          if echo "$last_message" | grep -q "$DOC_SKIP_TAG"; then
+            echo "SKIP_DOC_SYNC=true" >> "$GITHUB_ENV"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Latest commit contains $DOC_SKIP_TAG, skipping to avoid loops."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout shared workflow assets
+        if: env.SKIP_DOC_SYNC != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: activadee/codex-shared-workflows
+          ref: main
+          path: __codex_shared
+
+      - name: Write documentation scope manifest
+        if: env.SKIP_DOC_SYNC != 'true'
+        env:
+          DOC_GLOBS: ${{ inputs.doc_globs }}
+          DOC_GLOBS_PATH: doc-globs.txt
+        run: node __codex_shared/.github/scripts/doc-sync/write_doc_globs.js
+
+      - name: Prepare Codex prompt
+        if: env.SKIP_DOC_SYNC != 'true'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPORT_PATH: ${{ env.DOC_REPORT_PATH }}
+          TEMPLATE_PATH: __codex_shared/.github/prompts/codex-doc-sync.md
+          DOC_GLOBS_PATH: doc-globs.txt
+          PROMPT_PATH: codex_prompt.md
+        run: node __codex_shared/.github/scripts/doc-sync/prepare_prompt.js
+
+      - name: Run Codex doc sync
+        if: env.SKIP_DOC_SYNC != 'true'
+        id: run_codex
+        uses: activadee/codex-action@main
+        env:
+          DOC_REPORT_PATH: ${{ env.DOC_REPORT_PATH }}
+          DOC_SKIP_TAG: ${{ env.DOC_SKIP_TAG }}
+          DOC_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DOC_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          DOC_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DOC_PR_NUMBER: ${{ github.event.pull_request.number }}
+          DOC_GLOBS: ${{ inputs.doc_globs }}
+        with:
+          codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+          prompt-file: codex_prompt.md
+          safety-strategy: ${{ inputs.safety_strategy }}
+          model: ${{ inputs.model }}
+          effort: ${{ inputs.effort }}
+          codex-args: ${{ inputs.codex_args }}
+
+      - name: Detect documentation changes
+        if: env.SKIP_DOC_SYNC != 'true'
+        id: detect_docs
+        run: |
+          node __codex_shared/.github/scripts/doc-sync/detect_doc_changes.js \
+            --globs-file doc-globs.txt \
+            --output doc-changes.txt
+          if [ -s doc-changes.txt ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Docs already up to date
+        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'false'
+        run: cat "$DOC_REPORT_PATH" 2>/dev/null || echo "Documentation already matched the code changes."
+
+      - name: Commit documentation updates
+        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'true'
+        id: commit_docs
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add --pathspec-from-file=doc-changes.txt
+          git commit -m "[skip ci][doc-sync] Auto-update docs for PR #${PR_NUMBER}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Push documentation updates
+        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'true'
+        run: git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+      - name: Comment on pull request
+        if: env.SKIP_DOC_SYNC != 'true' && steps.detect_docs.outputs.changed == 'true' && inputs.comment_on_update
+        uses: actions/github-script@v7
+        env:
+          REPORT_PATH: ${{ env.DOC_REPORT_PATH }}
+          DOC_COMMIT_SHA: ${{ steps.commit_docs.outputs.sha }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = process.env.REPORT_PATH;
+            let summary = '';
+            try {
+              summary = fs.readFileSync(path, 'utf8').trim();
+            } catch (error) {
+              summary = 'Documentation was updated automatically to reflect the latest code changes.';
+            }
+            let files = '- (unknown)';
+            try {
+              const list = fs.readFileSync('doc-changes.txt', 'utf8')
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean);
+              if (list.length) {
+                files = list.map((item) => `- ${item}`).join('\n');
+              }
+            } catch (error) {
+              // ignore, fallback remains
+            }
+            const commitSha = process.env.DOC_COMMIT_SHA || '';
+            const body = [
+              '🤖 Documentation synchronized automatically.',
+              '',
+              summary,
+              '',
+              'Updated files:',
+              files,
+              '',
+              commitSha ? `Commit: ${commitSha}` : '',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
