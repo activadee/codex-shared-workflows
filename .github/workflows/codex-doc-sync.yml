@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOC_REPORT_PATH: doc-sync-report.md
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Resolve pull request context
         id: pr_context
