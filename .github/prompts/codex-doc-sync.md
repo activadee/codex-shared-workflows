@@ -20,9 +20,10 @@ You are operating inside a GitHub Actions runner with full access to the pull re
    - Use `git status --short` to verify only documentation files changed.
    - If non-doc files changed, revert them before continuing.
 4. Commit and push using the GitHub CLI:
-   - Run `gh auth status` to verify credentials (the `GH_TOKEN` env var is already configured for you).
+   - Export the token for the CLI (`export GH_TOKEN="$GITHUB_TOKEN"`) because GitHub CLI reads credentials from `GH_TOKEN` in Actions runners.
+   - Run `gh auth status` to verify authentication before pushing.
    - Configure git identity if needed: `git config user.name "github-actions[bot]"` and `git config user.email "github-actions[bot]@users.noreply.github.com"`.
-   - Stage the updated doc files only (`git add <files>` or `git add -p`).
+   - Stage **only** documentation files (`git add <files>` or `git add -p`). Never stage or commit `doc-sync-report.md`; if it appears staged, run `git reset doc-sync-report.md` before continuing.
    - Review the staged diff to confirm that only documentation content changed.
    - Commit with the message `[skip ci][doc-sync] Auto-update docs for PR #{{PR_NUMBER}}`.
    - Push via `gh` by running `gh api repos/{{REPOSITORY}}/git/refs/heads/{{HEAD_REF}} -X PATCH -f sha=$(git rev-parse HEAD)`.
