@@ -20,12 +20,19 @@ jobs:
       contents: read
       issues: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Checkout target repository
+        uses: actions/checkout@v5
+
+      - name: Checkout shared workflow assets
+        uses: actions/checkout@v5
+        with:
+          repository: activadee/codex-shared-workflows
+          ref: main
+          path: __codex_shared
 
       - name: Prepare Codex auto-label assets
         id: prepare
-        uses: ./.github/actions/auto-label-prepare
+        uses: ./__codex_shared/.github/actions/auto-label-prepare
         with:
           max-labels: ${{ inputs.max_labels }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -43,7 +50,7 @@ jobs:
           effort: medium
 
       - name: Apply labels
-        uses: ./.github/actions/auto-label-apply
+        uses: ./__codex_shared/.github/actions/auto-label-apply
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           max-labels: ${{ steps.prepare.outputs.max-labels }}
