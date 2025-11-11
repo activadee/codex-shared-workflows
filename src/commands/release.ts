@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import path from 'node:path';
-import stringArgv from 'string-argv';
 import { CodexClient } from '../lib/codex';
 import { loadActionContext } from '../lib/context';
 import { createOrUpdateRelease, listRecentCommits } from '../lib/github';
@@ -27,20 +26,6 @@ interface ReleaseOptions {
   dryRun?: boolean;
 }
 
-const buildCodexArgs = (options: ReleaseOptions) => {
-  const args = ['exec'];
-  if (options.model) {
-    args.push('--model', options.model);
-  }
-  if (options.effort) {
-    args.push('--effort', options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...stringArgv(options.codexArgs));
-  }
-  return args;
-};
-
 const buildNotesInput = (commits: unknown[], extra?: string) => {
   const commitLines = commits
     .map((commit: any) => `- ${commit.sha?.slice(0, 7)} ${commit.commit?.message?.split('\n')[0] ?? ''}`)
@@ -66,8 +51,8 @@ export const registerReleaseCommand = (program: Command) => {
     .option('--prompt <path>', 'Prompt file path for release notes', '.github/prompts/codex-release-template.md')
     .option('--model <name>', 'Codex model override')
     .option('--effort <level>', 'Codex reasoning effort override')
-    .option('--codex-args <args>', 'Additional Codex CLI flags')
-    .option('--codex-bin <path>', 'Codex CLI binary path', 'codex')
+    .option('--codex-args <args>', 'Legacy Codex CLI flags (ignored when using the SDK)')
+    .option('--codex-bin <path>', 'Override Codex binary path for the SDK', 'codex')
     .option('--notes-extra <markdown>', 'Extra markdown context appended to Codex input')
     .option('--commit-limit <number>', 'Number of commits to include', (value) => Number.parseInt(value, 10), 50)
     .option('--dry-run', 'Print notes without publishing release', false)
@@ -87,9 +72,16 @@ export const registerReleaseCommand = (program: Command) => {
 
       const commits = await listRecentCommits(ctx, { target: opts.target, limit: opts.commitLimit });
       const input = buildNotesInput(commits, opts.notesExtra);
+      if (opts.codexArgs) {
+        logger.warn('codexArgs are not supported when using the Codex SDK and will be ignored.');
+      }
       const codex = new CodexClient(opts.codexBin);
-      const args = buildCodexArgs(opts);
-      const notes = await codex.run({ args, input, promptPath: path.resolve(opts.prompt) });
+      const notes = await codex.run({
+        promptPath: path.resolve(opts.prompt),
+        input,
+        model: opts.model,
+        effort: opts.effort
+      });
 
       if (opts.dryRun) {
         logger.info('Generated release notes (dry-run):');

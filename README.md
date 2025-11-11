@@ -5,7 +5,7 @@ This repository now ships a single TypeScript-powered CLI plus a matching GitHub
 ## Requirements
 
 - **Node.js 20+** (the GitHub Action runs on the Node 20 runtime, and the CLI enforces `engines.node >= 20`).
-- **Codex credentials**: provide `CODEX_AUTH_JSON_B64` (Base64-encoded `auth.json`) as a secret anywhere Codex is invoked.
+- **Codex credentials**: the bundled `@openai/codex-sdk` expects `~/.codex/auth.json`. The CLI/action will mirror `CODEX_AUTH_JSON` or `CODEX_AUTH_JSON_B64` into that path automatically; otherwise provision the file yourself before running commands.
 - **`GITHUB_TOKEN`/`GH_TOKEN`** with repo + PR scope for operations that interact with GitHub APIs (reviews, releases, doc-sync comments/pushes).
 
 ## GitHub Action Usage
@@ -71,7 +71,7 @@ Multiple workflows can be triggered from the same action by adjusting `command`:
           CODEX_AUTH_JSON_B64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
 ```
 
-Available `with:` inputs mirror the CLI flags (see Command Reference). Every command accepts `model`, `effort`, `codex_args`, `codex_bin`, `dry_run`, and `prompt_path` overrides.
+Available `with:` inputs mirror the CLI flags (see Command Reference). Every command accepts `model`, `effort`, `codex_bin`, `dry_run`, and `prompt_path` overrides. `codex_args` remains for backward compatibility but is ignored while using the Codex SDK.
 
 ## CLI Usage
 

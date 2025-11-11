@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import stringArgv from 'string-argv';
 import { CodexClient } from '../lib/codex';
 import { loadActionContext, readEventPayload } from '../lib/context';
 import { createIssueComment, requirePullRequestNumber, type PullRequestEventPayload } from '../lib/github';
@@ -45,23 +44,6 @@ interface DocSyncOptions {
   comment?: boolean;
   eventPath?: string;
 }
-
-const buildCodexArgs = (options: DocSyncOptions) => {
-  const args = ['exec'];
-  if (options.safetyStrategy) {
-    args.push('--safety-strategy', options.safetyStrategy);
-  }
-  if (options.model) {
-    args.push('--model', options.model);
-  }
-  if (options.effort) {
-    args.push('--effort', options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...stringArgv(options.codexArgs));
-  }
-  return args;
-};
 
 const readFileOrDefault = (filePath: string, fallback: string) => {
   if (!fs.existsSync(filePath)) {
@@ -123,11 +105,11 @@ export const registerDocSyncCommand = (program: Command) => {
     .option('--head-ref <ref>', 'Head branch ref (default: PR head)')
     .option('--head-sha <sha>', 'Head commit SHA override')
     .option('--pull-number <number>', 'Pull request number', (value) => Number.parseInt(value, 10))
-    .option('--codex-bin <path>', 'Codex CLI binary', 'codex')
+    .option('--codex-bin <path>', 'Override Codex binary path for the SDK', 'codex')
     .option('--model <name>', 'Codex model override')
     .option('--effort <level>', 'Codex effort override')
-    .option('--safety-strategy <mode>', 'Codex safety strategy (drop-sudo/read-only/etc)')
-    .option('--codex-args <args>', 'Additional Codex CLI flags')
+    .option('--safety-strategy <mode>', 'Legacy safety strategy flag (ignored when using the SDK)')
+    .option('--codex-args <args>', 'Legacy Codex CLI flags (ignored when using the SDK)')
     .option('--dry-run', 'Skip committing/pushing, only show summary', false)
     .option('--no-auto-commit', 'Do not create a git commit')
     .option('--no-auto-push', 'Do not push changes upstream')
@@ -185,8 +167,13 @@ export const registerDocSyncCommand = (program: Command) => {
         }
       });
 
+      if (opts.codexArgs) {
+        logger.warn('codexArgs are not supported when using the Codex SDK and will be ignored.');
+      }
+      if (opts.safetyStrategy) {
+        logger.warn('safetyStrategy is not configurable via the Codex SDK and will be ignored.');
+      }
       const codex = new CodexClient(opts.codexBin);
-      const args = buildCodexArgs(opts);
       const extraEnv = {
         DOC_REPORT_PATH: path.resolve(opts.reportPath),
         DOC_BASE_REF: baseRef,
@@ -199,7 +186,12 @@ export const registerDocSyncCommand = (program: Command) => {
         GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? ''
       };
 
-      await codex.run({ args, promptPath: path.resolve(opts.promptPath), extraEnv });
+      await codex.run({
+        promptPath: path.resolve(opts.promptPath),
+        model: opts.model,
+        effort: opts.effort,
+        extraEnv
+      });
 
       await assertDocsOnlyChanged(docPatterns);
       const { docFiles } = await classifyDiffFiles(docPatterns);

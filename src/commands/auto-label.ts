@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import path from 'node:path';
-import stringArgv from 'string-argv';
 import { CodexClient } from '../lib/codex';
 import { loadActionContext, readEventPayload } from '../lib/context';
 import {
@@ -27,20 +26,6 @@ const buildInput = (payload: IssueEventPayload) => {
   const body = payload.issue?.body ?? 'No description provided';
   const type = payload.issue?.pull_request ? 'pull request' : 'issue';
   return `Title: ${title}\nType: ${type}\n---\n${body}`;
-};
-
-const buildArgs = (options: AutoLabelOptions) => {
-  const args = ['exec'];
-  if (options.model) {
-    args.push('--model', options.model);
-  }
-  if (options.effort) {
-    args.push('--effort', options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...stringArgv(options.codexArgs));
-  }
-  return args;
 };
 
 const parseLabels = (raw: string, limit: number) => {
@@ -73,17 +58,24 @@ export const registerAutoLabelCommand = (program: Command) => {
     .option('--max-labels <number>', 'Maximum labels to apply', (value) => Number.parseInt(value, 10), 3)
     .option('--model <name>', 'Codex model override')
     .option('--effort <level>', 'Codex effort override')
-    .option('--codex-args <args>', 'Additional Codex CLI flags')
-    .option('--codex-bin <path>', 'Codex binary', 'codex')
+    .option('--codex-args <args>', 'Legacy Codex CLI flags (ignored when using the SDK)')
+    .option('--codex-bin <path>', 'Override Codex binary path for the SDK', 'codex')
     .option('--dry-run', 'Print suggested labels without applying', false)
     .option('--event-path <path>', 'Event payload override')
     .action(async (opts: AutoLabelOptions) => {
       const ctx = loadActionContext({ eventPath: opts.eventPath });
       const payload = readEventPayload<IssueEventPayload>(ctx.eventPath) ?? {};
       const input = buildInput(payload);
-      const args = buildArgs(opts);
+      if (opts.codexArgs) {
+        logger.warn('codexArgs are not supported when using the Codex SDK and will be ignored.');
+      }
       const codex = new CodexClient(opts.codexBin);
-      const raw = await codex.run({ args, input, promptPath: path.resolve(opts.prompt) });
+      const raw = await codex.run({
+        promptPath: path.resolve(opts.prompt),
+        input,
+        model: opts.model,
+        effort: opts.effort
+      });
       const labels = parseLabels(raw, opts.maxLabels);
 
       if (!labels.length) {

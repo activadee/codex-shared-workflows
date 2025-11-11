@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import path from 'node:path';
-import stringArgv from 'string-argv';
 import { CodexClient } from '../lib/codex';
 import { loadActionContext, readEventPayload } from '../lib/context';
 import {
@@ -59,20 +58,6 @@ const buildCodexInput = async (
   return `${metadata}${guidance}\n\n---\n\n${fileSummaries}`;
 };
 
-const buildCodexArgs = (options: ReviewOptions) => {
-  const args = ['exec'];
-  if (options.model) {
-    args.push('--model', options.model);
-  }
-  if (options.effort) {
-    args.push('--effort', options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...stringArgv(options.codexArgs));
-  }
-  return args;
-};
-
 export const registerReviewCommand = (program: Command) => {
   program
     .command('review')
@@ -81,8 +66,8 @@ export const registerReviewCommand = (program: Command) => {
     .option('--prompt-extra <markdown>', 'Additional markdown appended to the prompt')
     .option('--model <name>', 'Codex model override')
     .option('--effort <level>', 'Codex reasoning effort override')
-    .option('--codex-args <args>', 'Custom arguments forwarded to `codex exec`')
-    .option('--codex-bin <path>', 'Codex CLI binary', 'codex')
+    .option('--codex-args <args>', 'Legacy Codex CLI args (ignored when using the SDK)')
+    .option('--codex-bin <path>', 'Override Codex binary path for the SDK', 'codex')
     .option('--dry-run', 'Only print the Codex output without submitting a review', false)
     .option('--event-path <path>', 'Path to a GitHub event payload override')
     .option('--pull-number <number>', 'Explicit pull request number override', (value) =>
@@ -92,9 +77,17 @@ export const registerReviewCommand = (program: Command) => {
       const ctx = loadActionContext({ eventPath: opts.eventPath });
       const event = readEventPayload<PullRequestEventPayload>(ctx.eventPath) ?? {};
       const input = await buildCodexInput(opts, event, ctx);
+      if (opts.codexArgs) {
+        logger.warn('codexArgs are not supported when using the Codex SDK and will be ignored.');
+      }
+
       const codex = new CodexClient(opts.codexBin);
-      const args = buildCodexArgs(opts);
-      const output = await codex.run({ args, input, promptPath: path.resolve(opts.prompt) });
+      const output = await codex.run({
+        promptPath: path.resolve(opts.prompt),
+        input,
+        model: opts.model,
+        effort: opts.effort
+      });
 
       if (opts.dryRun) {
         logger.info('Codex output (dry-run):');

@@ -15,16 +15,16 @@ inputs:
     description: "Additional markdown appended to the review prompt (review command only)."
     required: false
   model:
-    description: "Codex model override passed to codex exec."
+    description: "Codex model override forwarded through the Codex SDK."
     required: false
   effort:
     description: "Codex reasoning effort override."
     required: false
   codex_args:
-    description: "Additional arguments forwarded to codex exec (shell string)."
+    description: "(Legacy) Ignored while using the Codex SDK; retained for backward compatibility."
     required: false
   codex_bin:
-    description: "Path to the codex CLI binary (default: codex)."
+    description: "Optional path to a Codex CLI binary; defaults to the SDK's bundled binary."
     required: false
   event_path:
     description: "Path to a GitHub event payload JSON file (auto-label/review/doc-sync fallback)."
