@@ -2,7 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Codex Doc Sync Output",
   "type": "object",
-  "required": ["edits", "summary", "follow_ups"],
+  "required": [
+    "edits",
+    "summary",
+    "follow_ups"
+  ],
+  "additionalProperties": false,
   "properties": {
     "summary": {
       "type": "string",
@@ -13,7 +18,10 @@
       "description": "Documentation updates that can be applied automatically.",
       "items": {
         "type": "object",
-        "required": ["path", "patch"],
+        "required": [
+          "path",
+          "patch"
+        ],
         "properties": {
           "path": {
             "type": "string",
@@ -35,7 +43,9 @@
       "description": "Optional backlog items for docs that cannot be updated automatically.",
       "items": {
         "type": "object",
-        "required": ["description"],
+        "required": [
+          "description"
+        ],
         "properties": {
           "description": {
             "type": "string",
