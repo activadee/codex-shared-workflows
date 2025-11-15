@@ -37,7 +37,7 @@ export CODEX_AUTH_JSON_B64=...
 export GITHUB_TOKEN=...
 
 npx codex-workflows review \
-  --prompt .github/prompts/codex-review.md \
+  --prompt prompts/codex-review.md \
   --prompt-extra "Prioritize security regressions." \
   --model gpt-5 \
   --effort medium \

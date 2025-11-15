@@ -29,14 +29,23 @@ var core3 = __toESM(require("@actions/core"));
 var import_commander = require("commander");
 
 // src/commands/auto-label.ts
-var import_node_path3 = __toESM(require("path"));
-var import_string_argv = require("string-argv");
+var import_node_path4 = __toESM(require("path"));
 
 // src/lib/codex.ts
-var import_node_path = __toESM(require("path"));
+var import_node_fs2 = __toESM(require("fs"));
+var import_node_os = __toESM(require("os"));
+var import_node_path2 = __toESM(require("path"));
 
-// src/lib/exec.ts
-var import_execa = require("execa");
+// src/lib/files.ts
+var import_node_fs = __toESM(require("fs"));
+var import_node_path = __toESM(require("path"));
+var readPromptFile = (relativePath) => {
+  const absPath = import_node_path.default.resolve(relativePath);
+  if (!import_node_fs.default.existsSync(absPath)) {
+    throw new Error(`Prompt file not found: ${absPath}`);
+  }
+  return import_node_fs.default.readFileSync(absPath, "utf8");
+};
 
 // src/lib/logger.ts
 var core = __toESM(require("@actions/core"));
@@ -86,18 +95,9 @@ var logger = {
   }
 };
 
-// src/lib/exec.ts
-var runCommand = async ({ command, args = [], silent, ...options }) => {
-  logger.debug("exec", { command, args });
-  return (0, import_execa.execa)(command, args, {
-    stdout: silent ? "pipe" : "inherit",
-    stderr: silent ? "pipe" : "inherit",
-    stdin: "inherit",
-    ...options
-  });
-};
-
 // src/lib/codex.ts
+var AUTH_DIR = import_node_path2.default.join(import_node_os.default.homedir(), ".codex");
+var AUTH_PATH = import_node_path2.default.join(AUTH_DIR, "auth.json");
 var decodeCodexAuth = () => {
   if (process.env.CODEX_AUTH_JSON) {
     return process.env.CODEX_AUTH_JSON;
@@ -108,43 +108,198 @@ var decodeCodexAuth = () => {
   }
   return Buffer.from(encoded, "base64").toString("utf8");
 };
+var ensureAuthDirectory = () => {
+  if (!import_node_fs2.default.existsSync(AUTH_DIR)) {
+    import_node_fs2.default.mkdirSync(AUTH_DIR, { recursive: true });
+  }
+};
+var ensureAuthFile = () => {
+  const decoded = decodeCodexAuth();
+  ensureAuthDirectory();
+  if (decoded) {
+    const normalized = decoded.trim();
+    const current = import_node_fs2.default.existsSync(AUTH_PATH) ? import_node_fs2.default.readFileSync(AUTH_PATH, "utf8") : void 0;
+    if (current !== normalized) {
+      import_node_fs2.default.writeFileSync(AUTH_PATH, normalized, "utf8");
+    }
+    return AUTH_PATH;
+  }
+  if (!import_node_fs2.default.existsSync(AUTH_PATH)) {
+    throw new Error(
+      "Missing Codex credentials. Provide CODEX_AUTH_JSON / CODEX_AUTH_JSON_B64 or pre-provision ~/.codex/auth.json."
+    );
+  }
+  return AUTH_PATH;
+};
+var composePrompt = (promptPath, input) => {
+  const prompt = readPromptFile(promptPath);
+  if (!input) {
+    return prompt;
+  }
+  return `${prompt}
+
+---
+
+${input}`;
+};
+var loadSchema = (schemaPath) => {
+  if (!schemaPath) {
+    return void 0;
+  }
+  const resolved = import_node_path2.default.resolve(schemaPath);
+  if (!import_node_fs2.default.existsSync(resolved)) {
+    throw new Error(`Codex output schema not found at ${resolved}`);
+  }
+  try {
+    return JSON.parse(import_node_fs2.default.readFileSync(resolved, "utf8"));
+  } catch (error2) {
+    throw new Error(`Failed to parse Codex schema at ${resolved}: ${error2.message}`);
+  }
+};
+var normalizeEffort = (value) => {
+  if (!value) {
+    return void 0;
+  }
+  const normalized = value.trim().toLowerCase();
+  const allowed = ["minimal", "low", "medium", "high"];
+  if (allowed.includes(normalized)) {
+    return normalized;
+  }
+  logger.warn(`Unsupported Codex effort value "${value}". Falling back to default.`);
+  return void 0;
+};
+var loadCodexModule = async () => import("@openai/codex-sdk");
 var CodexClient = class {
-  constructor(binary = "codex") {
-    this.binary = binary;
+  codexInstance;
+  codexBinary;
+  constructor(codexBinary) {
+    this.codexBinary = codexBinary;
   }
-  buildEnv(extraEnv) {
-    const env = { ...process.env };
-    const decoded = decodeCodexAuth();
-    if (decoded) {
-      env.CODEX_AUTH_JSON = decoded;
+  async getCodex() {
+    ensureAuthFile();
+    if (!this.codexInstance) {
+      const { Codex } = await loadCodexModule();
+      const options = this.codexBinary && this.codexBinary !== "codex" ? { codexPathOverride: this.codexBinary } : void 0;
+      this.codexInstance = new Codex(options);
     }
-    if (extraEnv) {
-      Object.assign(env, extraEnv);
-    }
-    return env;
+    return this.codexInstance;
   }
-  async run({ args = [], input, promptPath, workingDirectory, extraEnv }) {
-    const finalArgs = [...args];
-    if (promptPath) {
-      finalArgs.push("--prompt", import_node_path.default.resolve(promptPath));
-    }
-    logger.debug("Invoking Codex CLI", { args: finalArgs });
-    const result = await runCommand({
-      command: this.binary,
-      args: finalArgs,
-      cwd: workingDirectory,
-      env: this.buildEnv(extraEnv),
-      input,
-      silent: true
+  async run(options) {
+    const payload = composePrompt(import_node_path2.default.resolve(options.promptPath), options.input);
+    const outputSchema = loadSchema(options.outputSchemaPath);
+    return this.withEnv(options.extraEnv, async () => {
+      const codex = await this.getCodex();
+      const thread = codex.startThread({
+        model: options.model,
+        modelReasoningEffort: normalizeEffort(options.effort),
+        sandboxMode: options.sandboxMode,
+        workingDirectory: options.workingDirectory,
+        skipGitRepoCheck: options.skipGitRepoCheck,
+        networkAccessEnabled: options.networkAccessEnabled ?? false,
+        webSearchEnabled: options.webSearchEnabled ?? false
+      });
+      const streamed = await thread.runStreamed(payload, { outputSchema });
+      const result = await collectStreamedTurn(streamed.events);
+      return result.trim();
     });
-    return result.stdout.trim();
   }
+  async withEnv(extraEnv, fn) {
+    if (!extraEnv || Object.keys(extraEnv).length === 0) {
+      return fn();
+    }
+    const previous = /* @__PURE__ */ new Map();
+    Object.entries(extraEnv).forEach(([key, value]) => {
+      previous.set(key, process.env[key]);
+      process.env[key] = value;
+    });
+    try {
+      return await fn();
+    } finally {
+      previous.forEach((value, key) => {
+        if (value === void 0) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      });
+    }
+  }
+};
+var collectStreamedTurn = async (events) => {
+  const items = [];
+  let finalResponse = "";
+  let turnFailure = null;
+  for await (const event of events) {
+    logEvent(event);
+    if (event.type === "item.started" || event.type === "item.updated") {
+      continue;
+    }
+    if (event.type === "item.completed") {
+      items.push(event.item);
+      if (event.item.type === "agent_message") {
+        finalResponse = event.item.text;
+      }
+    } else if (event.type === "turn.failed") {
+      turnFailure = event.error;
+      break;
+    }
+  }
+  if (turnFailure) {
+    throw new Error(turnFailure.message);
+  }
+  if (!finalResponse) {
+    const summaryItem = items.find((item) => item.type === "agent_message");
+    if (summaryItem) {
+      finalResponse = summaryItem.text ?? "";
+    }
+  }
+  return finalResponse;
+};
+var logEvent = (event) => {
+  if (event.type === "item.completed") {
+    const message = formatItemMessage(event.item);
+    if (message) {
+      writeStdout(message);
+      return;
+    }
+  }
+  if (event.type === "turn.failed") {
+    logger.error(`Codex turn failed: ${event.error.message}`);
+  }
+};
+var formatItemMessage = (item) => {
+  switch (item.type) {
+    case "agent_message":
+      return item.text?.trim();
+    case "reasoning":
+      return item.text?.trim();
+    case "command_execution":
+      if (item.command) {
+        const output = item.aggregated_output?.trim();
+        return output ? `$ ${item.command}
+${output}` : `$ ${item.command}`;
+      }
+      return void 0;
+    case "error":
+      return `Error: ${item.message}`;
+    default:
+      return void 0;
+  }
+};
+var writeStdout = (message) => {
+  if (!message) {
+    return;
+  }
+  const formatted = message.endsWith("\n") ? message : `${message}
+`;
+  process.stdout.write(formatted);
 };
 
 // src/lib/context.ts
 var import_github = require("@actions/github");
-var import_node_fs = __toESM(require("fs"));
-var import_node_path2 = __toESM(require("path"));
+var import_node_child_process = require("child_process");
+var import_node_fs3 = __toESM(require("fs"));
+var import_node_path3 = __toESM(require("path"));
 
 // src/lib/env.ts
 var optionalEnv = (name, fallback) => {
@@ -163,13 +318,49 @@ var parseRepo = (value) => {
   }
   return { owner, repo };
 };
+var detectRepoFromGit = () => {
+  try {
+    const remote = (0, import_node_child_process.execSync)("git config --get remote.origin.url", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim().replace(/\.git$/i, "");
+    if (!remote) {
+      return void 0;
+    }
+    if (remote.startsWith("git@")) {
+      const match = remote.match(/^git@[^:]+:(.+?)\/(.+)$/);
+      if (match) {
+        return { owner: match[1], repo: match[2] };
+      }
+    } else if (remote.startsWith("http://") || remote.startsWith("https://")) {
+      const url = new URL(remote);
+      const parts = url.pathname.replace(/^\//, "").split("/", 2);
+      if (parts.length === 2) {
+        return { owner: parts[0], repo: parts[1] };
+      }
+    }
+  } catch {
+    return void 0;
+  }
+  return void 0;
+};
 var loadActionContext = (overrides) => {
   const token = overrides?.token ?? optionalEnv("GITHUB_TOKEN");
   if (!token) {
     throw new Error("GITHUB_TOKEN is required to call GitHub APIs.");
   }
-  const repo = overrides?.repo ?? parseRepo(optionalEnv("GITHUB_REPOSITORY"));
-  const workspace = overrides?.workspace ?? optionalEnv("GITHUB_WORKSPACE", process.cwd());
+  const repo = overrides?.repo ?? (() => {
+    const fromEnv = optionalEnv("GITHUB_REPOSITORY");
+    if (fromEnv) {
+      return parseRepo(fromEnv);
+    }
+    const fromGit = detectRepoFromGit();
+    if (fromGit) {
+      return fromGit;
+    }
+    throw new Error("Unable to determine repository (missing GITHUB_REPOSITORY and git remote).");
+  })();
+  const workspace = overrides?.workspace ?? optionalEnv("GITHUB_WORKSPACE") ?? process.cwd();
   const eventPath = overrides?.eventPath ?? optionalEnv("GITHUB_EVENT_PATH");
   return {
     token,
@@ -184,14 +375,14 @@ var readEventPayload = (eventPath) => {
   if (!resolvedPath) {
     return void 0;
   }
-  if (!import_node_fs.default.existsSync(resolvedPath)) {
+  if (!import_node_fs3.default.existsSync(resolvedPath)) {
     throw new Error(`GITHUB_EVENT_PATH points to a missing file: ${resolvedPath}`);
   }
-  const raw = import_node_fs.default.readFileSync(resolvedPath, "utf8");
+  const raw = import_node_fs3.default.readFileSync(resolvedPath, "utf8");
   try {
     return JSON.parse(raw);
   } catch (error2) {
-    throw new Error(`Unable to parse event payload at ${import_node_path2.default.resolve(resolvedPath)}: ${error2.message}`);
+    throw new Error(`Unable to parse event payload at ${import_node_path3.default.resolve(resolvedPath)}: ${error2.message}`);
   }
 };
 
@@ -325,6 +516,7 @@ var listRecentCommits = async (ctx, params) => {
 };
 
 // src/commands/auto-label.ts
+var AUTO_LABEL_SCHEMA = "prompts/codex-auto-label-schema.json";
 var buildInput = (payload) => {
   const title = payload.issue?.title ?? "Untitled";
   const body = payload.issue?.body ?? "No description provided";
@@ -333,19 +525,6 @@ var buildInput = (payload) => {
 Type: ${type}
 ---
 ${body}`;
-};
-var buildArgs = (options) => {
-  const args = ["exec"];
-  if (options.model) {
-    args.push("--model", options.model);
-  }
-  if (options.effort) {
-    args.push("--effort", options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...(0, import_string_argv.argv)(options.codexArgs));
-  }
-  return args;
 };
 var parseLabels = (raw, limit) => {
   try {
@@ -361,13 +540,21 @@ var parseLabels = (raw, limit) => {
   return raw.split(/[,\n]/).map((label) => label.trim()).filter(Boolean).slice(0, limit);
 };
 var registerAutoLabelCommand = (program) => {
-  program.command("auto-label").description("Suggest and apply labels using Codex output").option("--prompt <path>", "Prompt file path", ".github/prompts/codex-auto-label.md").option("--max-labels <number>", "Maximum labels to apply", (value) => Number.parseInt(value, 10), 3).option("--model <name>", "Codex model override").option("--effort <level>", "Codex effort override").option("--codex-args <args>", "Additional Codex CLI flags").option("--codex-bin <path>", "Codex binary", "codex").option("--dry-run", "Print suggested labels without applying", false).option("--event-path <path>", "Event payload override").action(async (opts) => {
-    const ctx = loadActionContext({ eventPath: opts.eventPath });
+  program.command("auto-label").description("Suggest and apply labels using Codex output").option("--prompt <path>", "Prompt file path", "prompts/codex-auto-label.md").option("--max-labels <number>", "Maximum labels to apply", (value) => Number.parseInt(value, 10), 3).option("--model <name>", "Codex model override").option("--effort <level>", "Codex effort override").option("--codex-bin <path>", "Override Codex binary path for the SDK", "codex").option("--enable-network", "Allow Codex outbound network access", false).option("--enable-web-search", "Allow Codex to run web searches", false).option("--dry-run", "Print suggested labels without applying", false).option("--event-path <path>", "Event payload override").option("--repo <owner/repo>", "Override repository when running locally").action(async (opts) => {
+    const repoOverride = opts.repo ? parseRepo(opts.repo) : void 0;
+    const ctx = loadActionContext({ eventPath: opts.eventPath, repo: repoOverride });
     const payload = readEventPayload(ctx.eventPath) ?? {};
     const input = buildInput(payload);
-    const args = buildArgs(opts);
     const codex = new CodexClient(opts.codexBin);
-    const raw = await codex.run({ args, input, promptPath: import_node_path3.default.resolve(opts.prompt) });
+    const raw = await codex.run({
+      promptPath: import_node_path4.default.resolve(opts.prompt),
+      input,
+      model: opts.model,
+      effort: opts.effort,
+      outputSchemaPath: import_node_path4.default.resolve(AUTO_LABEL_SCHEMA),
+      networkAccessEnabled: Boolean(opts.enableNetwork),
+      webSearchEnabled: Boolean(opts.enableWebSearch)
+    });
     const labels = parseLabels(raw, opts.maxLabels);
     if (!labels.length) {
       logger.info("Codex did not return any labels. Nothing to do.");
@@ -385,13 +572,52 @@ var registerAutoLabelCommand = (program) => {
 };
 
 // src/commands/doc-sync.ts
-var import_node_fs3 = __toESM(require("fs"));
-var import_node_path5 = __toESM(require("path"));
-var import_string_argv2 = require("string-argv");
+var import_node_fs6 = __toESM(require("fs"));
+var import_node_path7 = __toESM(require("path"));
 
 // src/lib/doc-sync.ts
-var import_node_fs2 = __toESM(require("fs"));
-var import_node_path4 = __toESM(require("path"));
+var import_node_fs4 = __toESM(require("fs"));
+var import_node_path5 = __toESM(require("path"));
+
+// src/lib/exec.ts
+var import_execa = require("execa");
+var normalizeOutput = (value) => {
+  if (value === void 0) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.join("\n");
+  }
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value).toString("utf8");
+  }
+  return String(value);
+};
+var runCommand = async ({ command, args = [], silent, ...options }) => {
+  logger.debug("exec", { command, args });
+  const subprocess = (0, import_execa.execa)(command, args, {
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "inherit",
+    encoding: "utf8",
+    ...options
+  });
+  if (!silent) {
+    subprocess.stdout?.pipe(process.stdout);
+    subprocess.stderr?.pipe(process.stderr);
+  }
+  const result = await subprocess;
+  return {
+    ...result,
+    stdout: normalizeOutput(result.stdout),
+    stderr: normalizeOutput(result.stderr)
+  };
+};
+
+// src/lib/doc-sync.ts
 var DEFAULT_DOC_GLOBS = ["docs/**", "**/*.md", "README*"];
 var parseDocPatterns = (input) => {
   if (!input) {
@@ -405,15 +631,15 @@ var parseDocPatterns = (input) => {
   return lines.length ? lines : [...DEFAULT_DOC_GLOBS];
 };
 var writeDocGlobsFile = (patterns, destination) => {
-  const abs = import_node_path4.default.resolve(destination);
-  import_node_fs2.default.mkdirSync(import_node_path4.default.dirname(abs), { recursive: true });
-  import_node_fs2.default.writeFileSync(abs, `${patterns.join("\n")}
+  const abs = import_node_path5.default.resolve(destination);
+  import_node_fs4.default.mkdirSync(import_node_path5.default.dirname(abs), { recursive: true });
+  import_node_fs4.default.writeFileSync(abs, `${patterns.join("\n")}
 `, "utf8");
   return abs;
 };
 var collectCommitSummary = async (options) => {
   const { baseRef, headRef, headSha, outputPath } = options;
-  const abs = import_node_path4.default.resolve(outputPath);
+  const abs = import_node_path5.default.resolve(outputPath);
   const range = headRef ? [`origin/${baseRef}..${headRef}`] : [`origin/${baseRef}..HEAD`];
   try {
     await runCommand({ command: "git", args: ["fetch", "--no-tags", "origin", baseRef] });
@@ -421,17 +647,17 @@ var collectCommitSummary = async (options) => {
     logger.warn("Failed to fetch base ref; continuing with local data", { baseRef, error: error2 });
   }
   try {
-    const result = await runCommand({
+    const { stdout } = await runCommand({
       command: "git",
       args: ["log", "--no-merges", "--pretty=format:- %s (%h)", ...range],
       silent: true
     });
-    const content = result.stdout.trim();
+    const content = stdout.trim();
     if (content) {
-      import_node_fs2.default.writeFileSync(abs, `${content}
+      import_node_fs4.default.writeFileSync(abs, `${content}
 `, "utf8");
     } else {
-      import_node_fs2.default.writeFileSync(
+      import_node_fs4.default.writeFileSync(
         abs,
         `- No commits detected between origin/${baseRef} and ${headSha ?? headRef ?? "HEAD"}.
 `,
@@ -440,7 +666,7 @@ var collectCommitSummary = async (options) => {
     }
   } catch (error2) {
     logger.warn("Unable to collect commit summary; writing fallback message", { error: error2 });
-    import_node_fs2.default.writeFileSync(
+    import_node_fs4.default.writeFileSync(
       abs,
       `- Unable to compute commits for base ${baseRef} (${error2.message}).
 `,
@@ -473,8 +699,8 @@ var globToRegex = (glob) => {
 var normalisePath = (filePath) => filePath.replace(/\\/g, "/").replace(/^\.\//, "");
 var classifyDiffFiles = async (patterns) => {
   const regexes = patterns.map(globToRegex);
-  const diff = await runCommand({ command: "git", args: ["diff", "--name-only"], silent: true });
-  const files = diff.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const { stdout } = await runCommand({ command: "git", args: ["diff", "--name-only"], silent: true });
+  const files = stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const docFiles = [];
   const otherFiles = [];
   files.forEach((file) => {
@@ -493,32 +719,38 @@ var assertDocsOnlyChanged = async (patterns) => {
     throw new Error(`Non-documentation files were modified: ${otherFiles.join(", ")}`);
   }
 };
-var renderPromptTemplate = (options) => {
-  const template = import_node_fs2.default.readFileSync(import_node_path4.default.resolve(options.templatePath), "utf8");
-  let rendered = template;
-  for (const [key, value] of Object.entries(options.variables)) {
-    const needle = new RegExp(escapeRegex(key), "g");
-    rendered = rendered.replace(needle, value);
-  }
-  import_node_fs2.default.writeFileSync(import_node_path4.default.resolve(options.outputPath), rendered, "utf8");
-};
 var saveFileList = (files, outputPath) => {
-  const abs = import_node_path4.default.resolve(outputPath);
-  import_node_fs2.default.mkdirSync(import_node_path4.default.dirname(abs), { recursive: true });
-  import_node_fs2.default.writeFileSync(abs, `${files.join("\n")}
+  const abs = import_node_path5.default.resolve(outputPath);
+  import_node_fs4.default.mkdirSync(import_node_path5.default.dirname(abs), { recursive: true });
+  import_node_fs4.default.writeFileSync(abs, `${files.join("\n")}
 `, "utf8");
 };
 var computeDocPatch = async (outputPath) => {
-  const diff = await runCommand({ command: "git", args: ["diff", "--binary"], silent: true });
-  import_node_fs2.default.writeFileSync(import_node_path4.default.resolve(outputPath), diff.stdout, "utf8");
+  const { stdout } = await runCommand({ command: "git", args: ["diff", "--binary"], silent: true });
+  import_node_fs4.default.writeFileSync(import_node_path5.default.resolve(outputPath), stdout, "utf8");
 };
 var hasPendingChanges = async () => {
-  const status = await runCommand({
+  const { stdout } = await runCommand({
     command: "git",
     args: ["status", "--porcelain"],
     silent: true
   });
-  return Boolean(status.stdout.trim());
+  return Boolean(stdout.trim());
+};
+
+// src/lib/templates.ts
+var import_node_fs5 = __toESM(require("fs"));
+var import_node_path6 = __toESM(require("path"));
+var escapeRegex2 = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var renderTemplateFile = ({ templatePath, outputPath, variables }) => {
+  const template = import_node_fs5.default.readFileSync(import_node_path6.default.resolve(templatePath), "utf8");
+  let rendered = template;
+  for (const [needle, replacement] of Object.entries(variables)) {
+    const regex = new RegExp(escapeRegex2(needle), "g");
+    rendered = rendered.replace(regex, replacement);
+  }
+  import_node_fs5.default.mkdirSync(import_node_path6.default.dirname(outputPath), { recursive: true });
+  import_node_fs5.default.writeFileSync(import_node_path6.default.resolve(outputPath), rendered, "utf8");
 };
 
 // src/lib/git.ts
@@ -543,32 +775,16 @@ var ensureGitUser = async (options) => {
   await runCommand({ command: "git", args: ["config", "user.email", email], cwd: options?.cwd });
 };
 var getHeadSha = async (cwd) => {
-  const result = await runCommand({ command: "git", args: ["rev-parse", "HEAD"], cwd, silent: true });
-  return result.stdout.trim();
+  const { stdout } = await runCommand({ command: "git", args: ["rev-parse", "HEAD"], cwd, silent: true });
+  return stdout.trim();
 };
 
 // src/commands/doc-sync.ts
-var buildCodexArgs = (options) => {
-  const args = ["exec"];
-  if (options.safetyStrategy) {
-    args.push("--safety-strategy", options.safetyStrategy);
-  }
-  if (options.model) {
-    args.push("--model", options.model);
-  }
-  if (options.effort) {
-    args.push("--effort", options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...(0, import_string_argv2.argv)(options.codexArgs));
-  }
-  return args;
-};
 var readFileOrDefault = (filePath, fallback) => {
-  if (!import_node_fs3.default.existsSync(filePath)) {
+  if (!import_node_fs6.default.existsSync(filePath)) {
     return fallback;
   }
-  const contents = import_node_fs3.default.readFileSync(filePath, "utf8").trim();
+  const contents = import_node_fs6.default.readFileSync(filePath, "utf8").trim();
   return contents || fallback;
 };
 var collectDocPatterns = (options) => {
@@ -581,9 +797,9 @@ var collectDocPatterns = (options) => {
   return [...DEFAULT_DOC_GLOBS];
 };
 var ensureGitIgnoreEntries = (paths) => {
-  const excludePath = import_node_path5.default.resolve(".git/info/exclude");
-  import_node_fs3.default.mkdirSync(import_node_path5.default.dirname(excludePath), { recursive: true });
-  const existing = import_node_fs3.default.existsSync(excludePath) ? import_node_fs3.default.readFileSync(excludePath, "utf8").split(/\r?\n/).filter(Boolean) : [];
+  const excludePath = import_node_path7.default.resolve(".git/info/exclude");
+  import_node_fs6.default.mkdirSync(import_node_path7.default.dirname(excludePath), { recursive: true });
+  const existing = import_node_fs6.default.existsSync(excludePath) ? import_node_fs6.default.readFileSync(excludePath, "utf8").split(/\r?\n/).filter(Boolean) : [];
   const entries = new Set(existing);
   let changed = false;
   paths.map((entry) => entry.trim()).filter(Boolean).forEach((entry) => {
@@ -593,7 +809,7 @@ var ensureGitIgnoreEntries = (paths) => {
     }
   });
   if (changed) {
-    import_node_fs3.default.writeFileSync(excludePath, `${Array.from(entries).join("\n")}
+    import_node_fs6.default.writeFileSync(excludePath, `${Array.from(entries).join("\n")}
 `, "utf8");
   }
 };
@@ -601,8 +817,9 @@ var registerDocSyncCommand = (program) => {
   program.command("doc-sync").description("Run the documentation sync workflow end-to-end.").option("--doc-globs <multiline>", "Newline-separated glob list defining documentation scope").option("--doc-glob <pattern>", "Additional doc glob (can be repeated)", (value, prev = []) => {
     prev.push(value);
     return prev;
-  }).option("--doc-globs-file <path>", "Path where doc globs manifest will be written", "doc-globs.txt").option("--prompt-template <path>", "Codex prompt template", ".github/prompts/codex-doc-sync.md").option("--prompt-path <path>", "Rendered prompt destination", "codex_prompt.md").option("--report-path <path>", "Doc summary markdown path", "doc-sync-report.md").option("--commits-path <path>", "Commit summary path", "doc-commits.md").option("--patch-path <path>", "Diff patch output", "doc-changes.patch").option("--files-path <path>", "Touched file list output", "doc-changes.txt").option("--base-ref <ref>", "Base branch ref (default: PR base or main)").option("--head-ref <ref>", "Head branch ref (default: PR head)").option("--head-sha <sha>", "Head commit SHA override").option("--pull-number <number>", "Pull request number", (value) => Number.parseInt(value, 10)).option("--codex-bin <path>", "Codex CLI binary", "codex").option("--model <name>", "Codex model override").option("--effort <level>", "Codex effort override").option("--safety-strategy <mode>", "Codex safety strategy (drop-sudo/read-only/etc)").option("--codex-args <args>", "Additional Codex CLI flags").option("--dry-run", "Skip committing/pushing, only show summary", false).option("--no-auto-commit", "Do not create a git commit").option("--no-auto-push", "Do not push changes upstream").option("--no-comment", "Skip PR comment").option("--event-path <path>", "Event payload override path").action(async (opts) => {
-    const ctx = loadActionContext({ eventPath: opts.eventPath });
+  }).option("--doc-globs-file <path>", "Path where doc globs manifest will be written", "doc-globs.txt").option("--prompt-template <path>", "Codex prompt template", "prompts/codex-doc-sync.md").option("--prompt-path <path>", "Rendered prompt destination", "codex_prompt.md").option("--report-path <path>", "Doc summary markdown path", "doc-sync-report.md").option("--commits-path <path>", "Commit summary path", "doc-commits.md").option("--patch-path <path>", "Diff patch output", "doc-changes.patch").option("--files-path <path>", "Touched file list output", "doc-changes.txt").option("--base-ref <ref>", "Base branch ref (default: PR base or main)").option("--head-ref <ref>", "Head branch ref (default: PR head)").option("--head-sha <sha>", "Head commit SHA override").option("--pull-number <number>", "Pull request number", (value) => Number.parseInt(value, 10)).option("--codex-bin <path>", "Override Codex binary path for the SDK", "codex").option("--model <name>", "Codex model override").option("--effort <level>", "Codex effort override").option("--safety-strategy <mode>", "Legacy safety strategy flag (ignored when using the SDK)").option("--dry-run", "Skip committing/pushing, only show summary", false).option("--no-auto-commit", "Do not create a git commit").option("--no-auto-push", "Do not push changes upstream").option("--no-comment", "Skip PR comment").option("--event-path <path>", "Event payload override path").option("--repo <owner/repo>", "Override repository when running locally").option("--enable-network", "Allow Codex outbound network access", false).option("--enable-web-search", "Allow Codex to run web searches", false).action(async (opts) => {
+    const repoOverride = opts.repo ? parseRepo(opts.repo) : void 0;
+    const ctx = loadActionContext({ eventPath: opts.eventPath, repo: repoOverride });
     const payload = readEventPayload(ctx.eventPath) ?? {};
     const repoFull = `${ctx.repo.owner}/${ctx.repo.repo}`;
     const pullNumber = opts.pullNumber ?? (payload.pull_request ? requirePullRequestNumber(payload) : void 0);
@@ -631,7 +848,7 @@ var registerDocSyncCommand = (program) => {
     await collectCommitSummary({ baseRef, headRef, headSha, outputPath: opts.commitsPath });
     const docScope = docPatterns.map((pattern) => `- ${pattern}`).join("\n");
     const commitSummary = readFileOrDefault(opts.commitsPath, "- No commits provided.");
-    renderPromptTemplate({
+    renderTemplateFile({
       templatePath: opts.promptTemplate,
       outputPath: opts.promptPath,
       variables: {
@@ -644,10 +861,15 @@ var registerDocSyncCommand = (program) => {
         "{{REPORT_PATH}}": opts.reportPath
       }
     });
+    if (opts.codexArgs) {
+      logger.warn("codexArgs are not supported when using the Codex SDK and will be ignored.");
+    }
+    if (opts.safetyStrategy) {
+      logger.warn("safetyStrategy is not configurable via the Codex SDK and will be ignored.");
+    }
     const codex = new CodexClient(opts.codexBin);
-    const args = buildCodexArgs(opts);
     const extraEnv = {
-      DOC_REPORT_PATH: import_node_path5.default.resolve(opts.reportPath),
+      DOC_REPORT_PATH: import_node_path7.default.resolve(opts.reportPath),
       DOC_BASE_REF: baseRef,
       DOC_HEAD_REF: headRef,
       DOC_HEAD_SHA: headSha ?? "",
@@ -657,7 +879,14 @@ var registerDocSyncCommand = (program) => {
       GH_TOKEN: process.env.GITHUB_TOKEN ?? "",
       GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? ""
     };
-    await codex.run({ args, promptPath: import_node_path5.default.resolve(opts.promptPath), extraEnv });
+    await codex.run({
+      promptPath: import_node_path7.default.resolve(opts.promptPath),
+      model: opts.model,
+      effort: opts.effort,
+      extraEnv,
+      networkAccessEnabled: Boolean(opts.enableNetwork),
+      webSearchEnabled: Boolean(opts.enableWebSearch)
+    });
     await assertDocsOnlyChanged(docPatterns);
     const { docFiles } = await classifyDiffFiles(docPatterns);
     if (!docFiles.length) {
@@ -711,10 +940,10 @@ var registerDocSyncCommand = (program) => {
 // src/lib/go.ts
 var core2 = __toESM(require("@actions/core"));
 var tc = __toESM(require("@actions/tool-cache"));
-var import_node_fs4 = __toESM(require("fs"));
-var import_node_path6 = __toESM(require("path"));
+var import_node_fs7 = __toESM(require("fs"));
+var import_node_path8 = __toESM(require("path"));
 var import_semver = __toESM(require("semver"));
-var import_string_argv3 = require("string-argv");
+var import_string_argv = __toESM(require("string-argv"));
 var PLATFORM_MAP = {
   linux: "linux",
   darwin: "darwin",
@@ -723,7 +952,9 @@ var PLATFORM_MAP = {
   freebsd: "linux",
   openbsd: "linux",
   sunos: "linux",
-  android: "linux"
+  android: "linux",
+  haiku: "linux",
+  cygwin: "windows"
 };
 var ARCH_MAP = {
   x64: "amd64",
@@ -731,7 +962,11 @@ var ARCH_MAP = {
   arm: "armv6l",
   ia32: "386",
   ppc64: "ppc64le",
-  s390x: "s390x"
+  s390x: "s390x",
+  loong64: "loong64",
+  mips: "mips",
+  mipsel: "mipsle",
+  riscv64: "riscv64"
 };
 var normaliseVersion = (value) => {
   const cleaned = value.replace(/^go/i, "");
@@ -747,7 +982,7 @@ var installGo = async (version) => {
   }
   const cached = tc.find("go", normalized);
   if (cached) {
-    const bin = import_node_path6.default.join(cached, "bin");
+    const bin = import_node_path8.default.join(cached, "bin");
     core2.addPath(bin);
     return bin;
   }
@@ -759,16 +994,16 @@ var installGo = async (version) => {
   logger.info(`Downloading Go ${normalized} from ${url}`);
   const downloadPath = await tc.downloadTool(url);
   const extracted = ext === "zip" ? await tc.extractZip(downloadPath) : await tc.extractTar(downloadPath);
-  const cachePath = await tc.cacheDir(import_node_path6.default.join(extracted, "go"), "go", normalized);
-  const binPath = import_node_path6.default.join(cachePath, "bin");
+  const cachePath = await tc.cacheDir(import_node_path8.default.join(extracted, "go"), "go", normalized);
+  const binPath = import_node_path8.default.join(cachePath, "bin");
   core2.addPath(binPath);
   return binPath;
 };
 var readVersionFromFile = (filePath) => {
-  if (!import_node_fs4.default.existsSync(filePath)) {
+  if (!import_node_fs7.default.existsSync(filePath)) {
     return void 0;
   }
-  const raw = import_node_fs4.default.readFileSync(filePath, "utf8");
+  const raw = import_node_fs7.default.readFileSync(filePath, "utf8");
   const match = raw.match(/^go\s+(\d+\.\d+(?:\.\d+)?)$/m);
   return match?.[1];
 };
@@ -776,7 +1011,7 @@ var runGoTests = async (options) => {
   const workingDirectory = options.workingDirectory ?? process.cwd();
   let resolvedVersion = options.goVersion;
   if (!resolvedVersion && options.goVersionFile) {
-    resolvedVersion = readVersionFromFile(import_node_path6.default.resolve(options.goVersionFile));
+    resolvedVersion = readVersionFromFile(import_node_path8.default.resolve(options.goVersionFile));
   }
   if (resolvedVersion) {
     await installGo(resolvedVersion);
@@ -788,7 +1023,7 @@ var runGoTests = async (options) => {
       cwd: workingDirectory
     });
   }
-  const flags = options.testFlags ? (0, import_string_argv3.argv)(options.testFlags) : ["./..."];
+  const flags = options.testFlags ? (0, import_string_argv.default)(options.testFlags) : ["./..."];
   await runCommand({
     command: "go",
     args: ["test", ...flags],
@@ -820,21 +1055,10 @@ var registerGoTestsCommand = (program) => {
 };
 
 // src/commands/release.ts
-var import_node_path7 = __toESM(require("path"));
-var import_string_argv4 = require("string-argv");
-var buildCodexArgs2 = (options) => {
-  const args = ["exec"];
-  if (options.model) {
-    args.push("--model", options.model);
-  }
-  if (options.effort) {
-    args.push("--effort", options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...(0, import_string_argv4.argv)(options.codexArgs));
-  }
-  return args;
-};
+var import_node_fs8 = __toESM(require("fs"));
+var import_node_os2 = __toESM(require("os"));
+var import_node_path9 = __toESM(require("path"));
+var RELEASE_SCHEMA = "prompts/codex-release-schema.json";
 var buildNotesInput = (commits, extra) => {
   const commitLines = commits.map((commit) => `- ${commit.sha?.slice(0, 7)} ${commit.commit?.message?.split("\n")[0] ?? ""}`).join("\n");
   const extraBlock = extra ? `
@@ -845,8 +1069,9 @@ ${extra}` : "";
 ${commitLines}${extraBlock}`;
 };
 var registerReleaseCommand = (program) => {
-  program.command("release").description("Generate release notes with Codex and publish a GitHub release").requiredOption("--tag-name <tag>", "Tag to publish (e.g. v1.2.3)").option("--release-title <title>", "Release display name (defaults to tag)").option("--target <ref>", "Target ref/commit for the release", "main").option("--draft", "Create the release as a draft", false).option("--skip-tests", "Skip Go test execution", false).option("--go-version <version>", "Explicit Go version to install").option("--go-version-file <path>", "File with Go version (default go.mod)").option("--test-flags <flags>", "Flags forwarded to go test (default ./...)").option("--pre-test <script>", "Shell snippet executed before go test").option("--prompt <path>", "Prompt file path for release notes", ".github/prompts/codex-release-template.md").option("--model <name>", "Codex model override").option("--effort <level>", "Codex reasoning effort override").option("--codex-args <args>", "Additional Codex CLI flags").option("--codex-bin <path>", "Codex CLI binary path", "codex").option("--notes-extra <markdown>", "Extra markdown context appended to Codex input").option("--commit-limit <number>", "Number of commits to include", (value) => Number.parseInt(value, 10), 50).option("--dry-run", "Print notes without publishing release", false).action(async (opts) => {
-    const ctx = loadActionContext();
+  program.command("release").description("Generate release notes with Codex and publish a GitHub release").requiredOption("--tag-name <tag>", "Tag to publish (e.g. v1.2.3)").option("--release-title <title>", "Release display name (defaults to tag)").option("--target <ref>", "Target ref/commit for the release", "main").option("--draft", "Create the release as a draft", false).option("--skip-tests", "Skip Go test execution", false).option("--go-version <version>", "Explicit Go version to install").option("--go-version-file <path>", "File with Go version (default go.mod)").option("--test-flags <flags>", "Flags forwarded to go test (default ./...)").option("--pre-test <script>", "Shell snippet executed before go test").option("--prompt <path>", "Prompt file path for release notes", "prompts/codex-release-template.md").option("--model <name>", "Codex model override").option("--effort <level>", "Codex reasoning effort override").option("--codex-bin <path>", "Override Codex binary path for the SDK", "codex").option("--enable-network", "Allow Codex outbound network access", false).option("--enable-web-search", "Allow Codex to run web searches", false).option("--notes-extra <markdown>", "Extra markdown context appended to Codex input").option("--project-name <text>", "Project name referenced in the prompt", "Codex Go SDK").option("--project-language <text>", "Primary language referenced in the prompt", "Go").option("--package-name <text>", "Package/module identifier referenced in the prompt", "github.com/activadee/godex").option("--project-purpose <text>", "One-line description of the project purpose", "Provides a wrapper around the Codex CLI.").option("--repository-url <text>", "Repository URL or identifier referenced in the prompt", "https://github.com/activadee/godex").option("--commit-limit <number>", "Number of commits to include", (value) => Number.parseInt(value, 10), 50).option("--dry-run", "Print notes without publishing release", false).option("--repo <owner/repo>", "Override repository when running locally").action(async (opts) => {
+    const repoOverride = opts.repo ? parseRepo(opts.repo) : void 0;
+    const ctx = loadActionContext({ repo: repoOverride });
     if (!opts.skipTests) {
       await runGoTests({
         goVersion: opts.goVersion,
@@ -859,28 +1084,78 @@ var registerReleaseCommand = (program) => {
     }
     const commits = await listRecentCommits(ctx, { target: opts.target, limit: opts.commitLimit });
     const input = buildNotesInput(commits, opts.notesExtra);
+    if (opts.codexArgs) {
+      logger.warn("codexArgs are not supported when using the Codex SDK and will be ignored.");
+    }
     const codex = new CodexClient(opts.codexBin);
-    const args = buildCodexArgs2(opts);
-    const notes = await codex.run({ args, input, promptPath: import_node_path7.default.resolve(opts.prompt) });
+    const templatePath = import_node_path9.default.resolve(opts.prompt);
+    const { promptPath, cleanup } = renderReleasePrompt(templatePath, buildReleasePromptVariables(opts));
+    let notes;
+    try {
+      notes = await codex.run({
+        promptPath,
+        input,
+        model: opts.model,
+        effort: opts.effort,
+        outputSchemaPath: import_node_path9.default.resolve(RELEASE_SCHEMA),
+        networkAccessEnabled: Boolean(opts.enableNetwork),
+        webSearchEnabled: Boolean(opts.enableWebSearch)
+      });
+    } finally {
+      cleanup();
+    }
+    const releaseBody = formatReleaseBody(notes);
     if (opts.dryRun) {
       logger.info("Generated release notes (dry-run):");
-      logger.info(notes);
+      logger.info(releaseBody);
       return;
     }
     const url = await createOrUpdateRelease(ctx, {
       tag: opts.tagName,
       target: opts.target,
       releaseName: opts.releaseTitle,
-      body: notes,
+      body: releaseBody,
       draft: opts.draft
     });
     logger.info(`Release ready at ${url}`);
   });
 };
+var formatReleaseBody = (raw) => {
+  try {
+    const parsed = JSON.parse(raw);
+    const overview = parsed.overview?.trim() ?? "No overview provided.";
+    const highlights = Array.isArray(parsed.highlights) && parsed.highlights.length ? parsed.highlights.map((item) => `- ${item}`).join("\n") : "- Update details unavailable.";
+    return [`${overview}`, "", "## Highlights", highlights].join("\n");
+  } catch (error2) {
+    logger.warn("Failed to parse structured release notes; using raw output.", {
+      message: error2.message
+    });
+    return raw;
+  }
+};
+var buildReleasePromptVariables = (opts) => ({
+  "{{PROJECT_NAME}}": opts.projectName ?? "Codex Go SDK",
+  "{{PROJECT_LANGUAGE}}": opts.projectLanguage ?? "Go",
+  "{{PACKAGE_NAME}}": opts.packageName ?? "github.com/activadee/godex",
+  "{{PROJECT_PURPOSE}}": opts.projectPurpose ?? "Provides a wrapper around the Codex CLI.",
+  "{{REPOSITORY_URL}}": opts.repositoryUrl ?? "https://github.com/activadee/godex"
+});
+var renderReleasePrompt = (templatePath, variables) => {
+  const tempDir = import_node_fs8.default.mkdtempSync(import_node_path9.default.join(import_node_os2.default.tmpdir(), "codex-release-"));
+  const promptPath = import_node_path9.default.join(tempDir, "prompt.md");
+  renderTemplateFile({ templatePath, outputPath: promptPath, variables });
+  const cleanup = () => {
+    try {
+      import_node_fs8.default.rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+    }
+  };
+  return { promptPath, cleanup };
+};
 
 // src/commands/review.ts
-var import_node_path8 = __toESM(require("path"));
-var import_string_argv5 = require("string-argv");
+var import_node_path10 = __toESM(require("path"));
+var REVIEW_SCHEMA = "prompts/codex-review-schema.json";
 var buildCodexInput = async (options, event, ctx) => {
   const pullNumber = options.pullNumber ?? requirePullRequestNumber(event);
   const pr = await fetchPullRequest(ctx, pullNumber);
@@ -913,38 +1188,49 @@ ${options.promptExtra}` : "";
 
 ${fileSummaries}`;
 };
-var buildCodexArgs3 = (options) => {
-  const args = ["exec"];
-  if (options.model) {
-    args.push("--model", options.model);
+var formatReviewResponse = (raw) => {
+  try {
+    const parsed = JSON.parse(raw);
+    const summary = parsed.summary?.trim() || "No issues detected.";
+    const comments = Array.isArray(parsed.comments) ? parsed.comments : [];
+    const findings = comments.length ? comments.map((comment) => `- \`${comment.path}:${comment.line}\`
+  ${comment.body}`).join("\n") : "- \u2705 No blocking findings.";
+    return [`## Summary`, summary, "", "## Findings", findings].join("\n");
+  } catch (error2) {
+    logger.warn("Failed to parse structured review output; returning raw text.", {
+      message: error2.message
+    });
+    return raw;
   }
-  if (options.effort) {
-    args.push("--effort", options.effort);
-  }
-  if (options.codexArgs) {
-    args.push(...(0, import_string_argv5.argv)(options.codexArgs));
-  }
-  return args;
 };
 var registerReviewCommand = (program) => {
-  program.command("review").description("Run the Codex PR review workflow").option("--prompt <path>", "Prompt file to use", ".github/prompts/codex-review.md").option("--prompt-extra <markdown>", "Additional markdown appended to the prompt").option("--model <name>", "Codex model override").option("--effort <level>", "Codex reasoning effort override").option("--codex-args <args>", "Custom arguments forwarded to `codex exec`").option("--codex-bin <path>", "Codex CLI binary", "codex").option("--dry-run", "Only print the Codex output without submitting a review", false).option("--event-path <path>", "Path to a GitHub event payload override").option(
+  program.command("review").description("Run the Codex PR review workflow").option("--prompt <path>", "Prompt file to use", "prompts/codex-review.md").option("--prompt-extra <markdown>", "Additional markdown appended to the prompt").option("--model <name>", "Codex model override").option("--effort <level>", "Codex reasoning effort override").option("--codex-bin <path>", "Override Codex binary path for the SDK", "codex").option("--enable-network", "Allow Codex outbound network access", false).option("--enable-web-search", "Allow Codex to run web searches", false).option("--dry-run", "Only print the Codex output without submitting a review", false).option("--event-path <path>", "Path to a GitHub event payload override").option(
     "--pull-number <number>",
     "Explicit pull request number override",
     (value) => Number.parseInt(value, 10)
-  ).action(async (opts) => {
-    const ctx = loadActionContext({ eventPath: opts.eventPath });
+  ).option("--repo <owner/repo>", "Override repository when running locally").action(async (opts) => {
+    const repoOverride = opts.repo ? parseRepo(opts.repo) : void 0;
+    const ctx = loadActionContext({ eventPath: opts.eventPath, repo: repoOverride });
     const event = readEventPayload(ctx.eventPath) ?? {};
     const input = await buildCodexInput(opts, event, ctx);
     const codex = new CodexClient(opts.codexBin);
-    const args = buildCodexArgs3(opts);
-    const output = await codex.run({ args, input, promptPath: import_node_path8.default.resolve(opts.prompt) });
+    const output = await codex.run({
+      promptPath: import_node_path10.default.resolve(opts.prompt),
+      input,
+      model: opts.model,
+      effort: opts.effort,
+      outputSchemaPath: import_node_path10.default.resolve(REVIEW_SCHEMA),
+      networkAccessEnabled: Boolean(opts.enableNetwork),
+      webSearchEnabled: Boolean(opts.enableWebSearch)
+    });
+    const body = formatReviewResponse(output);
     if (opts.dryRun) {
       logger.info("Codex output (dry-run):");
       logger.info(output);
       return;
     }
     const pullNumber = opts.pullNumber ?? requirePullRequestNumber(event);
-    await createReview(ctx, pullNumber, output);
+    await createReview(ctx, pullNumber, body);
     logger.info(`Submitted review for PR #${pullNumber}`);
   });
 };
@@ -978,13 +1264,16 @@ var pushBooleanFlag = (args, flag, enabled) => {
     args.push(flag);
   }
 };
+var pushSharedCodexFlags = (args) => {
+  pushBooleanFlag(args, "--enable-network", truthy(core3.getInput("network_access")));
+  pushBooleanFlag(args, "--enable-web-search", truthy(core3.getInput("web_search")));
+};
 var buildReviewArgs = () => {
   const args = [];
-  pushOption(args, "--prompt", core3.getInput("prompt_path") || ".github/prompts/codex-review.md");
+  pushOption(args, "--prompt", core3.getInput("prompt_path") || "prompts/codex-review.md");
   pushOption(args, "--prompt-extra", core3.getInput("prompt_extra"));
   pushOption(args, "--model", core3.getInput("model"));
   pushOption(args, "--effort", core3.getInput("effort"));
-  pushOption(args, "--codex-args", core3.getInput("codex_args"));
   pushOption(args, "--codex-bin", core3.getInput("codex_bin"));
   pushOption(args, "--event-path", core3.getInput("event_path"));
   const pullNumber = core3.getInput("pull_number");
@@ -994,6 +1283,7 @@ var buildReviewArgs = () => {
   if (truthy(core3.getInput("dry_run"))) {
     args.push("--dry-run");
   }
+  pushSharedCodexFlags(args);
   return args;
 };
 var buildGoTestArgs = () => {
@@ -1022,12 +1312,16 @@ var buildReleaseArgs = () => {
   pushOption(args, "--go-version-file", core3.getInput("go_version_file"));
   pushOption(args, "--test-flags", core3.getInput("test_flags"));
   pushOption(args, "--pre-test", core3.getInput("pre_test"));
-  pushOption(args, "--prompt", core3.getInput("prompt_path") || ".github/prompts/codex-release-template.md");
+  pushOption(args, "--prompt", core3.getInput("prompt_path") || "prompts/codex-release-template.md");
   pushOption(args, "--model", core3.getInput("model"));
   pushOption(args, "--effort", core3.getInput("effort"));
-  pushOption(args, "--codex-args", core3.getInput("codex_args"));
   pushOption(args, "--codex-bin", core3.getInput("codex_bin"));
   pushOption(args, "--notes-extra", core3.getInput("notes_extra"));
+  pushOption(args, "--project-name", core3.getInput("project_name"));
+  pushOption(args, "--project-language", core3.getInput("project_language"));
+  pushOption(args, "--package-name", core3.getInput("package_name"));
+  pushOption(args, "--project-purpose", core3.getInput("project_purpose"));
+  pushOption(args, "--repository-url", core3.getInput("repository_url"));
   const commitLimit = core3.getInput("commit_limit");
   if (commitLimit) {
     args.push("--commit-limit", commitLimit);
@@ -1035,23 +1329,24 @@ var buildReleaseArgs = () => {
   if (truthy(core3.getInput("dry_run"))) {
     args.push("--dry-run");
   }
+  pushSharedCodexFlags(args);
   return args;
 };
 var buildAutoLabelArgs = () => {
   const args = [];
-  pushOption(args, "--prompt", core3.getInput("prompt_path") || ".github/prompts/codex-auto-label.md");
+  pushOption(args, "--prompt", core3.getInput("prompt_path") || "prompts/codex-auto-label.md");
   const maxLabels = core3.getInput("max_labels");
   if (maxLabels) {
     args.push("--max-labels", maxLabels);
   }
   pushOption(args, "--model", core3.getInput("model"));
   pushOption(args, "--effort", core3.getInput("effort"));
-  pushOption(args, "--codex-args", core3.getInput("codex_args"));
   pushOption(args, "--codex-bin", core3.getInput("codex_bin"));
   pushOption(args, "--event-path", core3.getInput("event_path"));
   if (truthy(core3.getInput("dry_run"))) {
     args.push("--dry-run");
   }
+  pushSharedCodexFlags(args);
   return args;
 };
 var buildDocSyncArgs = () => {
@@ -1074,7 +1369,6 @@ var buildDocSyncArgs = () => {
   pushOption(args, "--codex-bin", core3.getInput("codex_bin"));
   pushOption(args, "--model", core3.getInput("model"));
   pushOption(args, "--effort", core3.getInput("effort"));
-  pushOption(args, "--codex-args", core3.getInput("codex_args"));
   pushOption(args, "--safety-strategy", core3.getInput("safety_strategy"));
   if (truthy(core3.getInput("dry_run"))) {
     args.push("--dry-run");
@@ -1088,6 +1382,7 @@ var buildDocSyncArgs = () => {
   if (!truthy(core3.getInput("comment"), true)) {
     args.push("--no-comment");
   }
+  pushSharedCodexFlags(args);
   return args;
 };
 var buildArgsForCommand = (command) => {
@@ -1117,5 +1412,5 @@ async function run() {
     core3.setFailed(error2 instanceof Error ? error2.message : String(error2));
   }
 }
-run();
+void run();
 //# sourceMappingURL=action.cjs.map

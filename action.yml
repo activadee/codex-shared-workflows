@@ -111,7 +111,7 @@ inputs:
     required: false
     default: "doc-globs.txt"
   prompt_template:
-    description: "Doc-sync prompt template override (default .github/prompts/codex-doc-sync.md)."
+    description: "Doc-sync prompt template override (default prompts/codex-doc-sync.md)."
     required: false
   report_path:
     description: "Doc-sync report output path."

@@ -1,4 +1,4 @@
-import { Codex, type ModelReasoningEffort, type SandboxMode } from '@openai/codex-sdk';
+import type { ModelReasoningEffort, SandboxMode, ThreadEvent, ThreadItem } from '@openai/codex-sdk';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -103,13 +103,30 @@ const normalizeEffort = (value?: string): ModelReasoningEffort | undefined => {
   return undefined;
 };
 
+type CodexModule = typeof import('@openai/codex-sdk');
+type CodexInstance = InstanceType<CodexModule['Codex']>;
+
+const loadCodexModule = async () => import('@openai/codex-sdk');
+
 export class CodexClient {
-  private readonly codex: Codex;
+  private codexInstance?: CodexInstance;
+  private readonly codexBinary?: string;
 
   constructor(codexBinary?: string) {
+    this.codexBinary = codexBinary;
+  }
+
+  private async getCodex() {
     ensureAuthFile();
-    const options = codexBinary && codexBinary !== 'codex' ? { codexPathOverride: codexBinary } : undefined;
-    this.codex = new Codex(options);
+    if (!this.codexInstance) {
+      const { Codex } = await loadCodexModule();
+      const options =
+        this.codexBinary && this.codexBinary !== 'codex'
+          ? { codexPathOverride: this.codexBinary }
+          : undefined;
+      this.codexInstance = new Codex(options);
+    }
+    return this.codexInstance;
   }
 
   async run(options: CodexRunOptions) {
@@ -117,7 +134,8 @@ export class CodexClient {
     const outputSchema = loadSchema(options.outputSchemaPath);
 
     return this.withEnv(options.extraEnv, async () => {
-      const thread = this.codex.startThread({
+      const codex = await this.getCodex();
+      const thread = codex.startThread({
         model: options.model,
         modelReasoningEffort: normalizeEffort(options.effort),
         sandboxMode: options.sandboxMode,
@@ -127,8 +145,9 @@ export class CodexClient {
         webSearchEnabled: options.webSearchEnabled ?? false
       });
 
-      const turn = await thread.run(payload, { outputSchema });
-      return turn.finalResponse.trim();
+      const streamed = await thread.runStreamed(payload, { outputSchema });
+      const result = await collectStreamedTurn(streamed.events);
+      return result.trim();
     });
   }
 
@@ -156,3 +175,80 @@ export class CodexClient {
     }
   }
 }
+
+const collectStreamedTurn = async (events: AsyncGenerator<ThreadEvent>) => {
+  const items: any[] = [];
+  let finalResponse = '';
+  let turnFailure: { message: string } | null = null;
+
+  for await (const event of events) {
+    logEvent(event);
+    if (event.type === 'item.started' || event.type === 'item.updated') {
+      continue;
+    }
+    if (event.type === 'item.completed') {
+      items.push(event.item);
+      if (event.item.type === 'agent_message') {
+        finalResponse = event.item.text;
+      }
+    } else if (event.type === 'turn.failed') {
+      turnFailure = event.error;
+      break;
+    }
+  }
+
+  if (turnFailure) {
+    throw new Error(turnFailure.message);
+  }
+
+  if (!finalResponse) {
+    const summaryItem = items.find((item) => item.type === 'agent_message');
+    if (summaryItem) {
+      finalResponse = summaryItem.text ?? '';
+    }
+  }
+  return finalResponse;
+};
+
+const logEvent = (event: ThreadEvent) => {
+  if (event.type === 'item.completed') {
+    const message = formatItemMessage(event.item);
+    if (message) {
+      writeStdout(message);
+      return;
+    }
+  }
+
+  if (event.type === 'turn.failed') {
+    logger.error(`Codex turn failed: ${event.error.message}`);
+  }
+};
+
+const formatItemMessage = (item: ThreadItem) => {
+  switch (item.type) {
+    case 'agent_message':
+      return item.text?.trim();
+    case 'reasoning':
+      return item.text?.trim();
+    case 'command_execution':
+      if (item.command) {
+        const output = item.aggregated_output?.trim();
+        return output
+          ? `$ ${item.command}\n${output}`
+          : `$ ${item.command}`;
+      }
+      return undefined;
+    case 'error':
+      return `Error: ${item.message}`;
+    default:
+      return undefined;
+  }
+};
+
+const writeStdout = (message: string) => {
+  if (!message) {
+    return;
+  }
+  const formatted = message.endsWith('\n') ? message : `${message}\n`;
+  process.stdout.write(formatted);
+};

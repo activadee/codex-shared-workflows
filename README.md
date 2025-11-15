@@ -95,7 +95,7 @@ Detailed examples for each command live under `docs/examples`:
 - `docs/examples/auto-label.md` – Issue/PR labeling
 - `docs/examples/doc-sync.md` – Documentation sync workflow
 
-CLI execution shares the same environment conventions as the Action: export `CODEX_AUTH_JSON_B64`, `GITHUB_TOKEN`, and (optionally) `GH_TOKEN` before running commands.
+CLI execution shares the same environment conventions as the Action: export `CODEX_AUTH_JSON_B64`, `GITHUB_TOKEN`, and (optionally) `GH_TOKEN` before running commands. Outside GitHub Actions, provide repository context by either setting `GITHUB_REPOSITORY=owner/repo` or passing `--repo owner/repo` to commands that hit the GitHub API (review, release, auto-label, doc-sync).
 
 ## Command Reference
 
@@ -110,7 +110,7 @@ CLI execution shares the same environment conventions as the Action: export `COD
 ### `review`
 
 - Reads PR context from `GITHUB_EVENT_PATH` or `--pull-number`.
-- Builds diff context (`listFiles`) and streams it into `codex exec` using `.github/prompts/codex-review.md` by default.
+- Builds diff context (`listFiles`) and streams it into `codex exec` using `prompts/codex-review.md` by default.
 - Posts Codex output as a standard PR review comment; `--dry-run` prints to stdout.
 
 ### `go-tests`
@@ -122,19 +122,19 @@ CLI execution shares the same environment conventions as the Action: export `COD
 ### `release`
 
 - Reuses `go-tests` plumbing (unless `--skip-tests`).
-- Fetches recent commits (`commit_limit`, default 50) and feeds the summary plus `notes_extra` into `.github/prompts/codex-release-template.md`.
+- Fetches recent commits (`commit_limit`, default 50) and feeds the summary plus `notes_extra` into `prompts/codex-release-template.md`.
 - Customize the release context without editing the prompt by supplying `--project-name`, `--project-language`, `--package-name`, `--project-purpose`, or `--repository-url` (these values populate the template placeholders before Codex runs).
 - Calls GitHub Releases API to create/update the tag and logs the release URL (also printed in action logs).
 
 ### `auto-label`
 
-- Uses `.github/prompts/codex-auto-label.md` to instruct Codex to return a JSON array of labels.
+- Uses `prompts/codex-auto-label.md` to instruct Codex to return a JSON array of labels.
 - Ensures labels exist (creates when missing) and applies them via `issues.addLabels` unless `--dry-run` is set.
 
 ### `doc-sync`
 
 - Collapses the previous `prepare_inputs`, `edit_docs`, and `push_docs` jobs into one command.
-- Writes doc scope manifests + commit summaries, renders `.github/prompts/codex-doc-sync.md`, and exports the same env vars (`DOC_REPORT_PATH`, etc.) used by the original workflow to keep prompts intact.
+- Writes doc scope manifests + commit summaries, renders `prompts/codex-doc-sync.md`, and exports the same env vars (`DOC_REPORT_PATH`, etc.) used by the original workflow to keep prompts intact.
 - After Codex runs, verifies that only documentation globs changed, saves the file list + patch, optionally commits (`[skip ci][doc-sync] Auto-update docs for PR #N`), pushes to the head branch, and comments with the generated report.
 - `--doc-globs` accepts newline-separated patterns; use `--no-auto-commit`/`--no-auto-push` if you want to inspect results manually.
 
@@ -170,4 +170,4 @@ Steps:
 | `go-tests` | none (unless your tests hit private resources). |
 | `doc-sync` | needs permission to push + comment, so configure the job with `permissions: { contents: write, pull-requests: write }` and ensure forks are disallowed (the command enforces same-repo branches by default). |
 
-The repo keeps the existing prompt files under `.github/prompts/*`; update those to change Codex behavior globally.
+The repo keeps the existing prompt files under `prompts/*`; update those to change Codex behavior globally.

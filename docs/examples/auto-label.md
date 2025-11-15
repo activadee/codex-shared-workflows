@@ -33,7 +33,7 @@ export CODEX_AUTH_JSON_B64=...
 export GITHUB_TOKEN=...
 
 npx codex-workflows auto-label \
-  --prompt .github/prompts/codex-auto-label.md \
+  --prompt prompts/codex-auto-label.md \
   --max-labels 3 \
   --event-path ./fixtures/issue.json \
   --dry-run

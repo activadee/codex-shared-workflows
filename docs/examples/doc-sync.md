@@ -42,7 +42,7 @@ export GITHUB_TOKEN=...
 
 npx codex-workflows doc-sync \
   --doc-globs "docs/**\nREADME.md" \
-  --prompt-template .github/prompts/codex-doc-sync.md \
+  --prompt-template prompts/codex-doc-sync.md \
   --pull-number 128 \
   --enable-network \
   --dry-run

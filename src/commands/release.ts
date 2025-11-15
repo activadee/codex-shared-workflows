@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { CodexClient } from '../lib/codex';
-import { loadActionContext } from '../lib/context';
+import { loadActionContext, parseRepo } from '../lib/context';
 import { createOrUpdateRelease, listRecentCommits } from '../lib/github';
 import { runGoTests } from '../lib/go';
 import { logger } from '../lib/logger';
@@ -34,9 +34,10 @@ interface ReleaseOptions {
   packageName?: string;
   projectPurpose?: string;
   repositoryUrl?: string;
+  repo?: string;
 }
 
-const RELEASE_SCHEMA = '.github/prompts/codex-release-schema.json';
+const RELEASE_SCHEMA = 'prompts/codex-release-schema.json';
 
 const buildNotesInput = (commits: unknown[], extra?: string) => {
   const commitLines = commits
@@ -60,7 +61,7 @@ export const registerReleaseCommand = (program: Command) => {
     .option('--go-version-file <path>', 'File with Go version (default go.mod)')
     .option('--test-flags <flags>', 'Flags forwarded to go test (default ./...)')
     .option('--pre-test <script>', 'Shell snippet executed before go test')
-    .option('--prompt <path>', 'Prompt file path for release notes', '.github/prompts/codex-release-template.md')
+    .option('--prompt <path>', 'Prompt file path for release notes', 'prompts/codex-release-template.md')
     .option('--model <name>', 'Codex model override')
     .option('--effort <level>', 'Codex reasoning effort override')
     .option('--codex-bin <path>', 'Override Codex binary path for the SDK', 'codex')
@@ -74,8 +75,10 @@ export const registerReleaseCommand = (program: Command) => {
     .option('--repository-url <text>', 'Repository URL or identifier referenced in the prompt', 'https://github.com/activadee/godex')
     .option('--commit-limit <number>', 'Number of commits to include', (value) => Number.parseInt(value, 10), 50)
     .option('--dry-run', 'Print notes without publishing release', false)
+    .option('--repo <owner/repo>', 'Override repository when running locally')
     .action(async (opts: ReleaseOptions) => {
-      const ctx = loadActionContext();
+      const repoOverride = opts.repo ? parseRepo(opts.repo) : undefined;
+      const ctx = loadActionContext({ repo: repoOverride });
 
       if (!opts.skipTests) {
         await runGoTests({

@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CodexClient } from '../lib/codex';
-import { loadActionContext, readEventPayload } from '../lib/context';
+import { loadActionContext, parseRepo, readEventPayload } from '../lib/context';
 import { createIssueComment, requirePullRequestNumber, type PullRequestEventPayload } from '../lib/github';
 import {
   DEFAULT_DOC_GLOBS,
@@ -45,6 +45,7 @@ interface DocSyncOptions {
   eventPath?: string;
   enableNetwork?: boolean;
   enableWebSearch?: boolean;
+  repo?: string;
 }
 
 const readFileOrDefault = (filePath: string, fallback: string) => {
@@ -97,7 +98,7 @@ export const registerDocSyncCommand = (program: Command) => {
       return prev;
     })
     .option('--doc-globs-file <path>', 'Path where doc globs manifest will be written', 'doc-globs.txt')
-    .option('--prompt-template <path>', 'Codex prompt template', '.github/prompts/codex-doc-sync.md')
+    .option('--prompt-template <path>', 'Codex prompt template', 'prompts/codex-doc-sync.md')
     .option('--prompt-path <path>', 'Rendered prompt destination', 'codex_prompt.md')
     .option('--report-path <path>', 'Doc summary markdown path', 'doc-sync-report.md')
     .option('--commits-path <path>', 'Commit summary path', 'doc-commits.md')
@@ -116,10 +117,12 @@ export const registerDocSyncCommand = (program: Command) => {
     .option('--no-auto-push', 'Do not push changes upstream')
     .option('--no-comment', 'Skip PR comment')
     .option('--event-path <path>', 'Event payload override path')
+    .option('--repo <owner/repo>', 'Override repository when running locally')
     .option('--enable-network', 'Allow Codex outbound network access', false)
     .option('--enable-web-search', 'Allow Codex to run web searches', false)
     .action(async (opts: DocSyncOptions) => {
-      const ctx = loadActionContext({ eventPath: opts.eventPath });
+      const repoOverride = opts.repo ? parseRepo(opts.repo) : undefined;
+      const ctx = loadActionContext({ eventPath: opts.eventPath, repo: repoOverride });
       const payload = readEventPayload<PullRequestEventPayload>(ctx.eventPath) ?? {};
       const repoFull = `${ctx.repo.owner}/${ctx.repo.repo}`;
       const pullNumber =

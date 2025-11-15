@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import path from 'node:path';
 import { CodexClient } from '../lib/codex';
-import { loadActionContext, readEventPayload } from '../lib/context';
+import { loadActionContext, parseRepo, readEventPayload } from '../lib/context';
 import {
   addLabelsToIssue,
   ensureLabelsExist,
@@ -15,15 +15,15 @@ interface AutoLabelOptions {
   maxLabels: number;
   model?: string;
   effort?: string;
-  codexArgs?: string;
   codexBin?: string;
   dryRun?: boolean;
   eventPath?: string;
   enableNetwork?: boolean;
   enableWebSearch?: boolean;
+  repo?: string;
 }
 
-const AUTO_LABEL_SCHEMA = '.github/prompts/codex-auto-label-schema.json';
+const AUTO_LABEL_SCHEMA = 'prompts/codex-auto-label-schema.json';
 
 const buildInput = (payload: IssueEventPayload) => {
   const title = payload.issue?.title ?? 'Untitled';
@@ -58,7 +58,7 @@ export const registerAutoLabelCommand = (program: Command) => {
   program
     .command('auto-label')
     .description('Suggest and apply labels using Codex output')
-    .option('--prompt <path>', 'Prompt file path', '.github/prompts/codex-auto-label.md')
+    .option('--prompt <path>', 'Prompt file path', 'prompts/codex-auto-label.md')
     .option('--max-labels <number>', 'Maximum labels to apply', (value) => Number.parseInt(value, 10), 3)
     .option('--model <name>', 'Codex model override')
     .option('--effort <level>', 'Codex effort override')
@@ -67,13 +67,12 @@ export const registerAutoLabelCommand = (program: Command) => {
     .option('--enable-web-search', 'Allow Codex to run web searches', false)
     .option('--dry-run', 'Print suggested labels without applying', false)
     .option('--event-path <path>', 'Event payload override')
+    .option('--repo <owner/repo>', 'Override repository when running locally')
     .action(async (opts: AutoLabelOptions) => {
-      const ctx = loadActionContext({ eventPath: opts.eventPath });
+      const repoOverride = opts.repo ? parseRepo(opts.repo) : undefined;
+      const ctx = loadActionContext({ eventPath: opts.eventPath, repo: repoOverride });
       const payload = readEventPayload<IssueEventPayload>(ctx.eventPath) ?? {};
       const input = buildInput(payload);
-      if (opts.codexArgs) {
-        logger.warn('codexArgs are not supported when using the Codex SDK and will be ignored.');
-      }
       const codex = new CodexClient(opts.codexBin);
       const raw = await codex.run({
         promptPath: path.resolve(opts.prompt),

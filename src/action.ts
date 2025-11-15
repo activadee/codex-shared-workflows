@@ -28,7 +28,7 @@ const pushSharedCodexFlags = (args: string[]) => {
 
 const buildReviewArgs = () => {
   const args: string[] = [];
-  pushOption(args, '--prompt', core.getInput('prompt_path') || '.github/prompts/codex-review.md');
+  pushOption(args, '--prompt', core.getInput('prompt_path') || 'prompts/codex-review.md');
   pushOption(args, '--prompt-extra', core.getInput('prompt_extra'));
   pushOption(args, '--model', core.getInput('model'));
   pushOption(args, '--effort', core.getInput('effort'));
@@ -72,7 +72,7 @@ const buildReleaseArgs = () => {
   pushOption(args, '--go-version-file', core.getInput('go_version_file'));
   pushOption(args, '--test-flags', core.getInput('test_flags'));
   pushOption(args, '--pre-test', core.getInput('pre_test'));
-  pushOption(args, '--prompt', core.getInput('prompt_path') || '.github/prompts/codex-release-template.md');
+  pushOption(args, '--prompt', core.getInput('prompt_path') || 'prompts/codex-release-template.md');
   pushOption(args, '--model', core.getInput('model'));
   pushOption(args, '--effort', core.getInput('effort'));
   pushOption(args, '--codex-bin', core.getInput('codex_bin'));
@@ -95,7 +95,7 @@ const buildReleaseArgs = () => {
 
 const buildAutoLabelArgs = () => {
   const args: string[] = [];
-  pushOption(args, '--prompt', core.getInput('prompt_path') || '.github/prompts/codex-auto-label.md');
+  pushOption(args, '--prompt', core.getInput('prompt_path') || 'prompts/codex-auto-label.md');
   const maxLabels = core.getInput('max_labels');
   if (maxLabels) {
     args.push('--max-labels', maxLabels);
