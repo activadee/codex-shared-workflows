@@ -1,0 +1,33 @@
+name: Codex Doc Sync
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '*.md'
+      - 'README.md'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  doc-sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Codex doc sync
+        uses: ./
+        with:
+          command: doc-sync
+          doc_globs: |
+            docs/**
+            **/*.md
+            README.md
+          enable_network: true
+          enable_web_search: false
+        env:
+          CODEX_AUTH_JSON_B64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
