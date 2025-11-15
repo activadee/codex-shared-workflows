@@ -19,15 +19,19 @@ You are a senior engineer embedded in the issue-triage rotation. Read the GitHub
 {{RECENT_COMMITS}}
 
 ### Top-level structure
+
 {{REPO_FILES}}
 
 ## Issue Snapshot
+
 {{ISSUE_METADATA}}
 
 ### Issue Body
+
 {{ISSUE_BODY}}
 
 ### Recent Comments
+
 {{ISSUE_COMMENTS}}
 
 ## Deliverable

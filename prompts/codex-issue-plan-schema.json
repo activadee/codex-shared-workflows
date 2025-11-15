@@ -5,7 +5,13 @@
   "additionalProperties": false,
   "required": [
     "summary",
-    "plan_markdown"
+    "plan_markdown",
+    "risks",
+    "dependencies",
+    "open_questions",
+    "next_steps",
+    "confidence",
+    "estimated_effort"
   ],
   "properties": {
     "summary": {

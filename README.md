@@ -22,7 +22,6 @@ Reusable GitHub Actions workflows for Codex-enabled repositories. These workflow
 - `.github/workflows/issue-plan.yml`  
   Reads an issue plus repository context on `main`, has Codex (GPT-5.1-codex / high effort with network access) draft an implementation plan, and posts that plan back to the issue via the GitHub CLI using the forwarded `GH_TOKEN`.
 
-
 ## Using the workflows
 
 Create a workflow in another repository and reference the desired file via `uses`. Pin to a tag or commit once published.
@@ -212,7 +211,7 @@ Outputs:
 
 ## Repository layout
 
-```
+``` bash
 prompts/
   codex-review.md
   codex-review-schema.json
