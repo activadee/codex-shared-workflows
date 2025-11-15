@@ -1,0 +1,89 @@
+name: "Commit and push doc updates"
+description: "Commit the applied documentation changes as the GitHub Actions bot and push them to the PR branch without retriggering CI."
+inputs:
+  changes-applied:
+    description: "Set to \"true\" to push changes; otherwise the action exits."
+    required: false
+    default: "false"
+  summary-path:
+    description: "Optional JSON summary file from the edit step."
+    required: false
+    default: ""
+  commit-message:
+    description: "Commit subject line (include [skip ci] tokens)."
+    required: false
+    default: "docs: sync documentation [skip ci] [skip github-actions]"
+  committer-name:
+    description: "Git user.name for the commit."
+    required: false
+    default: "github-actions[bot]"
+  committer-email:
+    description: "Git user.email for the commit."
+    required: false
+    default: "41898282+github-actions[bot]@users.noreply.github.com"
+  head-ref:
+    description: "Branch name to push to (defaults to pull request head ref)."
+    required: false
+    default: ""
+outputs:
+  pushed:
+    description: "\"true\" if a commit was created and pushed."
+    value: ${{ steps.push.outputs.pushed }}
+runs:
+  using: "composite"
+  steps:
+    - id: push
+      name: Commit and push changes
+      shell: bash
+      env:
+        CHANGES_APPLIED: ${{ inputs.changes-applied }}
+        SUMMARY_PATH: ${{ inputs.summary-path }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        COMMITTER_NAME: ${{ inputs.committer-name }}
+        COMMITTER_EMAIL: ${{ inputs.committer-email }}
+        HEAD_REF_INPUT: ${{ inputs.head-ref }}
+      run: |
+        set -euo pipefail
+        if [ "${CHANGES_APPLIED}" != "true" ]; then
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git config user.name "$COMMITTER_NAME"
+        git config user.email "$COMMITTER_EMAIL"
+
+        git add -A
+
+        if git diff --cached --quiet; then
+          echo "::notice::No staged changes detected after Codex edits. Skipping push."
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        commit_subject=$(printf '%s' "$COMMIT_MESSAGE" | head -n1)
+        commit_body=$(printf '%s' "$COMMIT_MESSAGE" | tail -n +2 | sed '/^$/d')
+
+        if [ -n "$SUMMARY_PATH" ] && [ -f "$SUMMARY_PATH" ]; then
+          summary_block=$(jq -r '["Doc sync summary:", (.applied[]? | "- " + .path + (if (.justification // "") != "" then ": " + .justification else "" end)), (if (.follow_ups | length) > 0 then ["Follow ups:", (.follow_ups[] | "- " + .description)] else [] end)] | .[]' "$SUMMARY_PATH" || true)
+          if [ -n "$summary_block" ]; then
+            commit_body=$(printf "%s\n%s\n" "$commit_body" "$summary_block" | sed '/^[[:space:]]*$/d')
+          fi
+        fi
+
+        if [ -n "$commit_body" ]; then
+          git commit -m "$commit_subject" -m "$commit_body"
+        else
+          git commit -m "$commit_subject"
+        fi
+
+        head_ref="$HEAD_REF_INPUT"
+        if [ -z "$head_ref" ]; then
+          if [ -z "${GITHUB_EVENT_PATH:-}" ]; then
+            echo "::error::Cannot determine PR head ref" >&2
+            exit 1
+          fi
+          head_ref=$(jq -r '.pull_request.head.ref' "$GITHUB_EVENT_PATH")
+        fi
+
+        git push origin "HEAD:$head_ref"
+        echo "pushed=true" >> "$GITHUB_OUTPUT"

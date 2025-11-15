@@ -16,6 +16,9 @@ Reusable GitHub Actions workflows for Codex-enabled repositories. These workflow
 - `.github/workflows/auto-label.yml`  
   Calls Codex to suggest up to three labels for new or updated issues, creating labels when needed.
 
+- `.github/workflows/doc-sync.yml`  
+  Invokes Codex on pull requests to review the current diff, determine whether existing documentation is stale, and auto-commit safe markdown changes.
+
 
 ## Using the workflows
 
@@ -85,6 +88,10 @@ Required secrets for `release.yml`:
 Required secrets for `auto-label.yml`:
 
 - `CODEX_AUTH_JSON_B64` – Codex credentials for label generation.
+
+Required secrets for `doc-sync.yml`:
+
+- `CODEX_AUTH_JSON_B64` – Codex credentials used to generate documentation patches.
 
 ### Optional inputs
 
@@ -157,6 +164,22 @@ Outputs:
 | `safety_strategy` | `drop-sudo` | Sandbox mode for Codex. |
 | `codex_args` | _empty_ | Extra CLI arguments forwarded to `codex exec`. |
 | `create_missing_labels` | `true` | Allow creating labels that don’t exist yet. |
+
+`doc-sync.yml` inputs:
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| `doc_globs` | see workflow | Newline-delimited globs that define editable documentation files. |
+| `max_doc_files` | `12` | Caps how many doc files are embedded into the prompt at once. |
+| `max_doc_chars` | `6000` | Max characters taken from each doc snippet. |
+| `max_total_chars` | `60000` | Upper bound on combined doc snippet length. |
+| `max_diff_bytes` | `600000` | Truncates the git diff fed to Codex to control prompt size. |
+| `prompt_extra` | _empty_ | Additional markdown appended to the shared doc-sync prompt. |
+| `safety_strategy` | `drop-sudo` | Passed to `activadee/codex-action`. |
+| `model` | _empty_ | Optional Codex model override. |
+| `effort` | _empty_ | Optional reasoning effort override. |
+| `codex_args` | _empty_ | Extra CLI flags forwarded to `codex exec`. |
+| `commit_message` | `docs: sync documentation [skip ci] [skip github-actions]` | Subject line for the GitHub bot commit that avoids retriggering CI. |
 
 ## Repository layout
 

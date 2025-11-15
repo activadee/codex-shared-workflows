@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Codex Doc Sync Output",
+  "type": "object",
+  "required": ["edits", "summary", "follow_ups"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "Short summary of whether docs were updated and why."
+    },
+    "edits": {
+      "type": "array",
+      "description": "Documentation updates that can be applied automatically.",
+      "items": {
+        "type": "object",
+        "required": ["path", "patch"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path to the documentation file being edited."
+          },
+          "patch": {
+            "type": "string",
+            "description": "Unified diff patch (--- a/path +++ b/path ...) that applies to the target file."
+          },
+          "justification": {
+            "type": "string",
+            "description": "1-3 sentence explanation of why the change is needed."
+          }
+        }
+      }
+    },
+    "follow_ups": {
+      "type": "array",
+      "description": "Optional backlog items for docs that cannot be updated automatically.",
+      "items": {
+        "type": "object",
+        "required": ["description"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "What work remains."
+          },
+          "owner_hint": {
+            "type": "string",
+            "description": "Optional pointer to the best owner or area."
+          }
+        }
+      }
+    }
+  }
+}

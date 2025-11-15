@@ -1,0 +1,95 @@
+name: "Run Codex doc sync"
+description: "Invoke Codex with the doc-sync prompt and apply resulting documentation patches."
+inputs:
+  codex-auth-json-b64:
+    description: "Base64-encoded Codex auth.json"
+    required: true
+  prompt-path:
+    description: "Path to the prompt markdown file"
+    required: false
+    default: "codex_prompt.md"
+  output-path:
+    description: "Path where Codex output JSON should be written"
+    required: false
+    default: "codex-output.json"
+  output-schema:
+    description: "JSON schema controlling the Codex response"
+    required: true
+  doc-allowlist-path:
+    description: "JSON file listing doc files that Codex is allowed to edit"
+    required: true
+  safety-strategy:
+    description: "Codex sandbox mode"
+    required: false
+    default: "drop-sudo"
+  model:
+    description: "Optional Codex model override"
+    required: false
+    default: ""
+  effort:
+    description: "Optional Codex reasoning effort"
+    required: false
+    default: ""
+  codex-args:
+    description: "Additional arguments forwarded to codex exec"
+    required: false
+    default: ""
+outputs:
+  output_path:
+    description: "Path to the Codex output file"
+    value: ${{ inputs.output-path }}
+  summary_path:
+    description: "Path to the JSON file summarizing applied edits"
+    value: ${{ steps.summary.outputs.summary_path }}
+  changes_applied:
+    description: "\"true\" when at least one edit was applied"
+    value: ${{ steps.summary.outputs.changes_applied }}
+  applied_files:
+    description: "JSON array of documentation files that were updated"
+    value: ${{ steps.summary.outputs.applied_files }}
+runs:
+  using: "composite"
+  steps:
+    - name: Run Codex doc sync
+      uses: activadee/codex-action@main
+      with:
+        codex-auth-json-b64: ${{ inputs.codex-auth-json-b64 }}
+        prompt-file: ${{ inputs.prompt-path }}
+        output-file: ${{ inputs.output-path }}
+        output-schema: ${{ inputs.output-schema }}
+        safety-strategy: ${{ inputs.safety-strategy }}
+        model: ${{ inputs.model }}
+        effort: ${{ inputs.effort }}
+        codex-args: ${{ inputs.codex-args }}
+
+    - name: Apply documentation patches
+      shell: bash
+      env:
+        CODEX_DOC_SYNC_OUTPUT_PATH: ${{ inputs.output-path }}
+        CODEX_DOC_SYNC_ALLOWLIST_PATH: ${{ inputs.doc-allowlist-path }}
+        CODEX_DOC_SYNC_SUMMARY_PATH: doc-sync-summary.json
+        CODEX_DOC_SYNC_PATCH_DIR: doc-sync-patches
+      run: |
+        set -euo pipefail
+        node "$GITHUB_ACTION_PATH/../lib/apply-doc-updates.js"
+
+    - id: summary
+      name: Summarize applied edits
+      shell: bash
+      env:
+        SUMMARY_PATH: doc-sync-summary.json
+      run: |
+        set -euo pipefail
+        if [ ! -f "$SUMMARY_PATH" ]; then
+          echo "::error::Missing doc-sync summary at $SUMMARY_PATH" >&2
+          exit 1
+        fi
+        applied_count=$(jq '.applied | length' "$SUMMARY_PATH")
+        applied_files=$(jq -c '[.applied[]?.path]' "$SUMMARY_PATH")
+        changes="false"
+        if [ "${applied_count}" != "0" ]; then
+          changes="true"
+        fi
+        echo "summary_path=$SUMMARY_PATH" >> "$GITHUB_OUTPUT"
+        echo "changes_applied=$changes" >> "$GITHUB_OUTPUT"
+        echo "applied_files=$applied_files" >> "$GITHUB_OUTPUT"

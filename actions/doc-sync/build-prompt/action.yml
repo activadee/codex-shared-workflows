@@ -1,0 +1,107 @@
+name: "Build Codex doc-sync prompt"
+description: "Combine the doc-sync template with diff, changed file list, and documentation context."
+inputs:
+  diff-path:
+    description: "Path to the git diff file."
+    required: true
+  changed-files-path:
+    description: "Path to the newline-delimited changed files list."
+    required: true
+  doc-context-path:
+    description: "Path to the markdown file containing documentation excerpts."
+    required: true
+  doc-allowlist-path:
+    description: "Path to the JSON file enumerating allowed documentation files."
+    required: true
+  prompt-extra:
+    description: "Optional markdown appended at the end of the prompt."
+    required: false
+    default: ""
+  prompt-path:
+    description: "Destination for the assembled prompt file."
+    required: false
+    default: "codex_prompt.md"
+outputs:
+  prompt_path:
+    description: "Path to the populated prompt file."
+    value: ${{ steps.prompt.outputs.prompt_path }}
+  output_schema:
+    description: "JSON schema used to validate Codex output."
+    value: ${{ steps.schema.outputs.schema }}
+runs:
+  using: "composite"
+  steps:
+    - id: prompt
+      name: Assemble prompt
+      shell: bash
+      env:
+        DIFF_PATH: ${{ inputs.diff-path }}
+        CHANGED_FILES_PATH: ${{ inputs.changed-files-path }}
+        DOC_CONTEXT_PATH: ${{ inputs.doc-context-path }}
+        DOC_ALLOWLIST_PATH: ${{ inputs.doc-allowlist-path }}
+        PROMPT_EXTRA: ${{ inputs.prompt-extra }}
+        PROMPT_PATH: ${{ inputs.prompt-path }}
+      run: |
+        set -euo pipefail
+        repo_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        template_path="$repo_root/prompts/codex-doc-sync.md"
+        cp "$template_path" "$PROMPT_PATH"
+
+        {
+          echo ''
+          echo '## Changed files'
+          echo ''
+          echo '```'
+        } >> "$PROMPT_PATH"
+        if [ -s "$CHANGED_FILES_PATH" ]; then
+          cat "$CHANGED_FILES_PATH" >> "$PROMPT_PATH"
+        else
+          echo '[no non-doc files changed]' >> "$PROMPT_PATH"
+        fi
+        echo '```' >> "$PROMPT_PATH"
+
+        {
+          echo ''
+          echo '## Git diff'
+          echo ''
+          echo '```diff'
+        } >> "$PROMPT_PATH"
+        if [ -s "$DIFF_PATH" ]; then
+          cat "$DIFF_PATH" >> "$PROMPT_PATH"
+        else
+          echo 'No diff produced.' >> "$PROMPT_PATH"
+        fi
+        echo '```' >> "$PROMPT_PATH"
+
+        echo '' >> "$PROMPT_PATH"
+        echo '## Allowed documentation files' >> "$PROMPT_PATH"
+        echo '' >> "$PROMPT_PATH"
+        if [ -s "$DOC_ALLOWLIST_PATH" ]; then
+          jq -r '.[] | "- " + .' "$DOC_ALLOWLIST_PATH" >> "$PROMPT_PATH"
+        else
+          echo '- (no documentation files matched the globs)' >> "$PROMPT_PATH"
+        fi
+
+        echo '' >> "$PROMPT_PATH"
+        echo '## Documentation excerpts' >> "$PROMPT_PATH"
+        echo '' >> "$PROMPT_PATH"
+        if [ -s "$DOC_CONTEXT_PATH" ]; then
+          cat "$DOC_CONTEXT_PATH" >> "$PROMPT_PATH"
+        else
+          echo '_No documentation excerpts available._' >> "$PROMPT_PATH"
+        fi
+
+        if [ -n "$PROMPT_EXTRA" ]; then
+          printf '\n%s\n' "$PROMPT_EXTRA" >> "$PROMPT_PATH"
+        fi
+
+        echo "prompt_path=$PROMPT_PATH" >> "$GITHUB_OUTPUT"
+
+    - id: schema
+      name: Load doc-sync output schema
+      shell: bash
+      run: |
+        set -euo pipefail
+        repo_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        schema=$(jq -c . "$repo_root/prompts/codex-doc-sync-schema.json")
+        echo "schema=$schema" >> "$GITHUB_OUTPUT"

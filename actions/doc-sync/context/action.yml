@@ -1,0 +1,62 @@
+name: "Collect doc sync context"
+description: "Gather the PR diff and changed files needed for Codex doc analysis."
+inputs:
+  base-ref:
+    description: "Base ref/branch to diff against (defaults to pull request base)."
+    required: false
+    default: ""
+  max-diff-bytes:
+    description: "Maximum number of bytes to keep from the diff file (0 keeps everything)."
+    required: false
+    default: "600000"
+outputs:
+  diff_path:
+    description: "Path to the trimmed diff file."
+    value: ${{ steps.diff.outputs.diff_path }}
+  changed_files_path:
+    description: "Path to the newline-delimited list of changed files."
+    value: ${{ steps.diff.outputs.changed_files_path }}
+runs:
+  using: "composite"
+  steps:
+    - id: diff
+      name: Generate diff context
+      shell: bash
+      env:
+        BASE_REF_INPUT: ${{ inputs.base-ref }}
+        MAX_DIFF_BYTES: ${{ inputs.max-diff-bytes }}
+      run: |
+        set -euo pipefail
+        if [ -z "${GITHUB_EVENT_PATH:-}" ] || ! jq -e '.pull_request' "$GITHUB_EVENT_PATH" >/dev/null; then
+          echo "This action requires a pull_request event." >&2
+          exit 1
+        fi
+
+        base_ref=$(jq -r '.pull_request.base.ref' "$GITHUB_EVENT_PATH")
+        base_sha=$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")
+        head_sha=$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")
+        ref_to_use="${BASE_REF_INPUT:-$base_ref}"
+
+        git fetch --no-tags origin "$ref_to_use"
+
+        diff_path="doc-sync-diff.txt"
+        git diff --unified=5 "origin/${ref_to_use}...$head_sha" > "$diff_path"
+
+        changed_files_path="doc-sync-changed-files.txt"
+        git diff --name-only "origin/${ref_to_use}...$head_sha" > "$changed_files_path"
+
+        max_bytes=${MAX_DIFF_BYTES:-0}
+        if [ "$max_bytes" != "0" ]; then
+          current_size=$(wc -c < "$diff_path")
+          if [ "$current_size" -gt "$max_bytes" ]; then
+            truncated_path="${diff_path%.txt}-truncated.txt"
+            head -c "$max_bytes" "$diff_path" > "$truncated_path"
+            printf '\n...\n[diff truncated to %s bytes]%s' "$max_bytes" $'\n' >> "$truncated_path"
+            mv "$truncated_path" "$diff_path"
+          fi
+        fi
+
+        {
+          echo "diff_path=$diff_path"
+          echo "changed_files_path=$changed_files_path"
+        } >> "$GITHUB_OUTPUT"

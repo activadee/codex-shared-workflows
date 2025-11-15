@@ -1,0 +1,142 @@
+name: Codex Doc Sync
+
+on:
+  workflow_call:
+    inputs:
+      doc_globs:
+        description: Newline-delimited globs representing documentation files that Codex may edit.
+        required: false
+        type: string
+        default: |
+          docs/**/*.md
+          docs/**/*.mdx
+          docs/**/*.rst
+          docs/**/*.adoc
+          README.md
+          *.md
+          *.mdx
+          *.rst
+      max_doc_files:
+        description: Maximum number of documentation files to embed in the Codex prompt.
+        required: false
+        type: number
+        default: 12
+      max_doc_chars:
+        description: Maximum characters pulled from each documentation file excerpt.
+        required: false
+        type: number
+        default: 6000
+      max_total_chars:
+        description: Maximum aggregate characters across all documentation excerpts.
+        required: false
+        type: number
+        default: 60000
+      max_diff_bytes:
+        description: Maximum bytes of diff context to feed into Codex (0 keeps entire diff).
+        required: false
+        type: number
+        default: 600000
+      prompt_extra:
+        description: Optional markdown appended to the Codex prompt.
+        required: false
+        type: string
+        default: ""
+      safety_strategy:
+        description: Codex sandbox strategy passed to codex-action.
+        required: false
+        type: string
+        default: drop-sudo
+      model:
+        description: Optional Codex model override.
+        required: false
+        type: string
+        default: ""
+      effort:
+        description: Optional Codex reasoning effort override.
+        required: false
+        type: string
+        default: ""
+      codex_args:
+        description: Additional CLI arguments forwarded to codex exec.
+        required: false
+        type: string
+        default: ""
+      commit_message:
+        description: Commit subject (should include [skip ci] tokens to avoid retriggering CI).
+        required: false
+        type: string
+        default: "docs: sync documentation [skip ci] [skip github-actions]"
+    secrets:
+      CODEX_AUTH_JSON_B64:
+        description: Base64 encoded auth.json for Codex CLI.
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: doc-sync-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  doc-sync:
+    name: Update documentation with Codex
+    if: github.event.pull_request != null && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      applied_files: ${{ steps.edit.outputs.applied_files }}
+      commit_pushed: ${{ steps.push.outputs.pushed }}
+    steps:
+      - name: Checkout repository
+        uses: activadee/codex-shared-workflows/actions/common/checkout-target@main
+        with:
+          fetch-depth: 0
+
+      - name: Collect doc-sync context
+        id: context
+        uses: activadee/codex-shared-workflows/actions/doc-sync/context@main
+        with:
+          max-diff-bytes: ${{ inputs.max_diff_bytes }}
+
+      - name: Prepare documentation excerpts
+        id: prepare
+        uses: activadee/codex-shared-workflows/actions/doc-sync/prepare@main
+        with:
+          doc-globs: ${{ inputs.doc_globs }}
+          changed-files-path: ${{ steps.context.outputs.changed_files_path }}
+          max-doc-files: ${{ inputs.max_doc_files }}
+          max-doc-chars: ${{ inputs.max_doc_chars }}
+          max-total-chars: ${{ inputs.max_total_chars }}
+
+      - name: Build Codex prompt
+        id: prompt
+        uses: activadee/codex-shared-workflows/actions/doc-sync/build-prompt@main
+        with:
+          diff-path: ${{ steps.context.outputs.diff_path }}
+          changed-files-path: ${{ steps.context.outputs.changed_files_path }}
+          doc-context-path: ${{ steps.prepare.outputs.doc_context_path }}
+          doc-allowlist-path: ${{ steps.prepare.outputs.doc_allowlist_path }}
+          prompt-extra: ${{ inputs.prompt_extra }}
+
+      - name: Run Codex doc sync
+        id: edit
+        uses: activadee/codex-shared-workflows/actions/doc-sync/edit@main
+        with:
+          codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+          prompt-path: ${{ steps.prompt.outputs.prompt_path }}
+          output-schema: ${{ steps.prompt.outputs.output_schema }}
+          doc-allowlist-path: ${{ steps.prepare.outputs.doc_allowlist_path }}
+          safety-strategy: ${{ inputs.safety_strategy }}
+          model: ${{ inputs.model }}
+          effort: ${{ inputs.effort }}
+          codex-args: ${{ inputs.codex_args }}
+
+      - name: Commit doc updates
+        id: push
+        uses: activadee/codex-shared-workflows/actions/doc-sync/push@main
+        with:
+          changes-applied: ${{ steps.edit.outputs.changes_applied }}
+          summary-path: ${{ steps.edit.outputs.summary_path }}
+          commit-message: ${{ inputs.commit_message }}
