@@ -17,7 +17,7 @@ Reusable GitHub Actions workflows for Codex-enabled repositories. These workflow
   Calls Codex to suggest up to three labels for new or updated issues, creating labels when needed.
 
 - `.github/workflows/doc-sync.yml`  
-  Invokes Codex on pull requests to review the current diff, edit the necessary documentation files, and push a `[skip ci][skip github-actions]` commit directly from the workflow (no follow-up jobs needed).
+  Invokes Codex on pull requests to review the current diff, edit the necessary documentation files, and push a `[skip ci][skip github-actions]` commit directly from the workflow (no follow-up jobs needed). Network access stays enabled inside the sandbox because the workflow passes `--config sandbox_workspace_write.network_access=true` through `codex-args`, so Codex can reach web search or `gh` without falling back to `danger-full-access`.
 
 
 ## Using the workflows

@@ -12,11 +12,11 @@ const formatFinding = (finding) => {
   const checkbox = finding.resolved ? '[x]' : '[ ]';
   const severityLabel = (finding.severity || 'info').toUpperCase();
   const title = finding.title || 'General finding';
-  const details = finding.details ? `\n    ${finding.details.trim()}` : '';
+  const details = finding.details ? `\n  ${finding.details.trim()}` : '';
   const refs = Array.isArray(finding.files) && finding.files.length
-    ? `\n    _Files:_ ${finding.files.join(', ')}`
+    ? `\n  _Files:_ ${finding.files.join(', ')}`
     : '';
-  return `${checkbox} **${severityLabel}** — ${title}${details}${refs}`;
+  return `- ${checkbox} **${severityLabel}** — ${title}${details}${refs}`;
 };
 
 module.exports = async ({ github, context, core }) => {

@@ -60,7 +60,7 @@ on:
         description: Additional CLI arguments forwarded to codex exec.
         required: false
         type: string
-        default: ""
+        default: '["--config","sandbox_workspace_write.network_access=true"]'
       pass_through_env:
         description: Comma or newline separated env vars forwarded to Codex (e.g., GH_TOKEN).
         required: false

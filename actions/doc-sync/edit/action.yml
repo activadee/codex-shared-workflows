@@ -66,7 +66,6 @@ runs:
         effort: ${{ inputs.effort }}
         codex-args: ${{ inputs.codex-args }}
         pass-through-env: ${{ inputs.pass-through-env }}
-        sandbox: "danger-full-access"
 
     - id: parse
       name: Parse Codex response
