@@ -1,6 +1,6 @@
 # Codex Auto Label Workflow
 
-Reusable workflow path: `.github/workflows/auto-label.yml`
+Reusable workflow path: `workflows/auto-label.yml`
 
 ## Summary
 - Fetches issue metadata + repository labels, builds a prompt from `prompts/codex-auto-label.md`, and runs Codex to suggest up to three labels.
@@ -26,7 +26,7 @@ Reusable workflow path: `.github/workflows/auto-label.yml`
 ## Example Usage
 ```yaml
 auto-label:
-  uses: activadee/codex-shared-workflows/.github/workflows/auto-label.yml@v1
+  uses: activadee/codex-shared-workflows/workflows/auto-label.yml@v1
   secrets: inherit
   with:
     max_labels: 3

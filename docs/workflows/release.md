@@ -1,6 +1,6 @@
 # Codex Release Workflow
 
-Reusable workflow path: `.github/workflows/release.yml`
+Reusable workflow path: `workflows/release.yml`
 
 ## Summary
 - Checks out the target ref, optionally installs Go, and runs pre-release tests via the shared `actions/go/*` composites (setup, pre-test script, and `go test` with race/coverage support).
@@ -45,7 +45,7 @@ Reusable workflow path: `.github/workflows/release.yml`
 ```yaml
 release:
   needs: go-tests
-  uses: activadee/codex-shared-workflows/.github/workflows/release.yml@v1
+  uses: activadee/codex-shared-workflows/workflows/release.yml@v1
   secrets: inherit
   with:
     tag_name: v1.2.3

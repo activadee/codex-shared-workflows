@@ -4,19 +4,19 @@ Reusable GitHub Actions workflows for Codex-enabled repositories. These workflow
 
 ## Workflows
 
-- `.github/workflows/codex-review.yml`  
+- `workflows/codex-review.yml`  
   Runs a Codex-powered pull request review. It collects PR context, executes `activadee/codex-action`, normalizes the output, and posts inline review comments plus a summary.
 
-- `.github/workflows/go-tests.yml`  
+- `workflows/go-tests.yml`  
   Installs Go, caches dependencies, and executes `go test` with configurable flags.
 
-- `.github/workflows/release.yml`  
+- `workflows/release.yml`  
   Generates release notes with Codex and publishes a GitHub release, optionally running `go test` first.
 
-- `.github/workflows/auto-label.yml`  
+- `workflows/auto-label.yml`  
   Calls Codex to suggest up to three labels for new or updated issues, creating labels when needed.
 
-- `.github/workflows/codex-doc-sync.yml`  
+- `workflows/codex-doc-sync.yml`  
   Runs Codex in a dedicated job to edit and commit documentation changes, then hands off to a follow-up job that applies the generated bundle and pushes it to the PR branch while posting the doc summary.
 
 ## Using the workflows
@@ -33,14 +33,14 @@ on:
 
 jobs:
   codex-review:
-    uses: activadee/codex-shared-workflows/.github/workflows/codex-review.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/codex-review.yml@v1
     secrets: inherit
     with:
       prompt_extra: |
         Prioritize security regressions and user-facing bugs.
 
   auto-label:
-    uses: activadee/codex-shared-workflows/.github/workflows/auto-label.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/auto-label.yml@v1
     secrets: inherit
     with:
       max_labels: 3
@@ -57,13 +57,13 @@ on:
 
 jobs:
   go-tests:
-    uses: activadee/codex-shared-workflows/.github/workflows/go-tests.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/go-tests.yml@v1
     with:
       go_version_file: go.mod
       test_flags: ./... -race -count=1
 
   release:
-    uses: activadee/codex-shared-workflows/.github/workflows/release.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/release.yml@v1
     secrets: inherit
     with:
       tag_name: v0.2.0

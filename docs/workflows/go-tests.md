@@ -1,6 +1,6 @@
 # Go Tests Workflow
 
-Reusable workflow path: `.github/workflows/go-tests.yml`
+Reusable workflow path: `workflows/go-tests.yml`
 
 ## Summary
 - Installs Go using `actions/go/setup` composite (wraps `actions/setup-go@v5`).
@@ -30,7 +30,7 @@ The workflow itself does not define outputs yet, but the `actions/go/test` compo
 ## Example Usage
 ```yaml
 go-tests:
-  uses: activadee/codex-shared-workflows/.github/workflows/go-tests.yml@v1
+  uses: activadee/codex-shared-workflows/workflows/go-tests.yml@v1
   with:
     go_version_file: go.mod
     test_flags: ./... -count=1

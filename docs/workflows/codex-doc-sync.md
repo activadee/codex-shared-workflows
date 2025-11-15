@@ -1,6 +1,6 @@
 # Codex Doc Sync Workflow
 
-Reusable workflow path: `.github/workflows/codex-doc-sync.yml`
+Reusable workflow path: `workflows/codex-doc-sync.yml`
 
 ## Summary
 - Validates the PR context to ensure the head branch lives inside the same repository (so pushes are allowed).
@@ -35,7 +35,7 @@ The workflow exposes these job-level outputs (via `edit_docs`/`push_docs`):
 ## Example Usage
 ```yaml
 codex-doc-sync:
-  uses: activadee/codex-shared-workflows/.github/workflows/codex-doc-sync.yml@v1
+  uses: activadee/codex-shared-workflows/workflows/codex-doc-sync.yml@v1
   secrets: inherit
   with:
     doc_globs: |

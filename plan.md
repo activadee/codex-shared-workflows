@@ -71,9 +71,9 @@ codex-automation-hub/
 ## Cross-cutting Refactor Tasks
 1. **Common utilities.** Extract repeated checkout/prompt/artifact logic into `actions/common/*` composites so each workflow can reference `uses: ./actions/common/...`. Provide Node helpers under `pkg/` (or `cli/internal/`) and share them between actions and the CLI.
 2. **CLI + shared prompts.** Move prompts/schemas from `.github/prompts/*` to `prompts/` at the repo root. Wrap them in the CLI so developers can run `codex review --local` before pushing. Ensure CLI reuses the same actions package via a shared `pkg/codex` module.
-3. **Testing + linting.** Add `tests/actions/<workflow>.yml` to run `actionlint`, smoke-run composites via `act`, and unit-test CLI commands. Hook these tests into `.github/workflows/test-actions.yml` and `lint-cli.yml`.
+3. **Testing + linting.** Add `tests/actions/<workflow>.yml` to run `actionlint`, smoke-run composites via `act`, and unit-test CLI commands. Hook these tests into `workflows/test-actions.yml` and `workflows/lint-cli.yml`.
 4. **Versioning + releases.** Define semantic tags for actions (`v1`, `v1.1.0`), workflows, and CLI releases. Document promotion steps in `docs/releasing.md`.
-5. **Migration guides.** For every workflow, ship a doc with: feature parity matrix, migration instructions (replace `activadee/codex-shared-workflows/.github/workflows/foo.yml@main` with `org/codex-automation-hub/.github/workflows/foo.yml@v1`), and CLI equivalents.
+5. **Migration guides.** For every workflow, ship a doc with: feature parity matrix, migration instructions (replace `activadee/codex-shared-workflows/workflows/foo.yml@main` with `org/codex-automation-hub/workflows/foo.yml@v1`), and CLI equivalents.
 
 ---
 
