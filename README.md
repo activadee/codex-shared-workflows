@@ -131,9 +131,23 @@ Required secrets for `codex-doc-sync.yml`:
 | `go_version_file` | `go.mod` | File declaring Go version. |
 | `run_tests` | `true` | Run `go test` before release. |
 | `test_flags` | `./...` | Flags passed to `go test`. |
+| `enable_cache` | `true` | Enable Go module cache for pre-release tests. |
+| `cache_dependency_path` | _empty_ | Newline-delimited glob list hashed for cache keys. |
+| `test_working_directory` | `.` | Directory where `go test` runs. |
+| `pre_test` | _empty_ | Shell snippet executed before `go test`. |
+| `coverage_profile` | _empty_ | Adds `-coverprofile` and stores the file at this path. |
+| `upload_coverage_artifact` | `false` | Upload the generated coverprofile artifact. |
+| `coverage_artifact_name` | `release-coverage` | Artifact name when uploading coverage. |
+| `race` | `false` | Run `go test` with `-race`. |
 | `download_artifacts` | `false` | Download workflow artifacts before publishing the release. |
 | `artifacts_path` | `release-artifacts` | Directory for downloaded artifacts. |
 | `artifact_glob` | _empty_ | Newline-delimited glob(s) (relative to the workspace after download) uploaded with the release. |
+| `tag_pattern` | `v*` | Pattern used to find the previous release tag. |
+| `prompt_extra` | _empty_ | Markdown appended to the Codex prompt. |
+| `codex_model` | _empty_ | Optional Codex model override. |
+| `codex_effort` | _empty_ | Optional reasoning effort override. |
+| `codex_args` | _empty_ | Extra flags forwarded to `codex exec`. |
+| `codex_safety_strategy` | `drop-sudo` | Safety strategy for Codex (drop-sudo/read-only/etc.). |
 
 Outputs:
 
@@ -178,6 +192,11 @@ actions/
     lib/
       normalize-review.cjs
       submit-review.js
+  release/
+    determine-range/
+    prepare-prompt/
+    generate-highlights/
+    render-notes/
 workflows/
 workflow-templates/
 cli/

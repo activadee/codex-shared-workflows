@@ -113,25 +113,15 @@ codex-automation-hub/
 2. Track next tasks: add `docs/actions/go.md` (still todo) and create `tests/actions/go-tests.yml` for actionlint/`act` coverage (todo).
 
 ### 3. `release.yml`
-**Current state.** Runs tests, fetches tags, builds prompt via bash, calls Codex, renders Markdown, optionally downloads artifacts, and publishes release via `softprops/action-gh-release`. Requires cloning this repo mid-workflow to access prompts/scripts.
+**Status.** Refactor merged on `feature/phase0-bootstrap`:
+- Added `actions/release/{determine-range,prepare-prompt,generate-highlights,render-notes}` to encapsulate tag discovery, prompt generation, Codex invocation, and Markdown rendering.
+- Workflow now reuses Go composites for pre-release tests (coverage, race, artifacts) and exposes Codex overrides (`prompt_extra`, `codex_model`, etc.).
+- Release notes are surfaced via the composite outputs (`steps.render_notes.outputs.notes`) and written to `release-notes.md`.
 
-**Target architecture.**
-- Composite action suite under `actions/release/*`:
-  1. `checkout-target` (reuse from common) and `determine-range` (find last tag, commit range, changelog list).
-  2. `build-codex-prompt` – templated action that renders `codex-release-template.md`, supports custom `prompt_extra` and component release sections.
-  3. `generate-notes` – wraps `activadee/codex-action` invocation, logs sanitized prompt, outputs JSON.
-  4. `render-notes` – converts JSON to Markdown, optionally merges manual sections or changelog fragments.
-  5. `publish-release` – orchestrates `gh release create` or `softprops` with artifact globbing, release assets, release branches.
-- Workflow extends inputs (e.g., `should_tag`, `tag_exists_strategy`, `artifact_matrix`). Adds output artifacts: `release-notes.md`, `codex-release.json`.
-- CLI command `codex release` replicates this pipeline locally, optionally in "dry run" mode that just prints release notes.
-
-**Implementation steps.**
-1. Extract the bash prompt builder into `actions/release/build-prompt` (node/shell). Accept optional `changelog_path` input for manual sections.
-2. Create `actions/release/determine-range` to compute previous tag; share with CLI library.
-3. Replace inline `jq` rendering with `actions/release/render-notes` (Node script). Add tests verifying JSON to Markdown conversion.
-4. Update workflow to reference new composites, allow injecting CLI-generated prompt (input `prompt_artifact`). Remove the manual checkout of this repo by bundling prompts inside the composite action package.
-5. Expand documentation for release flow, include state diagram for `download_artifacts` and `artifact_glob`.
-6. Provide release template workflow for standard Go repos referencing this workflow and optional CLI run.
+**Follow-ups.**
+1. Document composites in `docs/actions/release.md` (todo) and keep `docs/workflows/release.md` updated (initial version added in Phase 2, Step 3).
+2. Add `tests/actions/release.yml` (future Phase 3) that runs `actionlint` + an `act` dry run with synthetic tags/commits.
+3. Explore providing a workflow template (`workflow-templates/release-template.yml`) once CLI integration is ready.
 
 ### 4. `auto-label.yml`
 **Current state.** Already depends on local composites `auto-label-prepare` and `auto-label-apply`, but they require checking out the shared repo. Codex invocation is hard-coded for `gpt-5`/`medium` and lacks retry or deduplication support.
@@ -194,6 +184,10 @@ codex-automation-hub/
   - [x] Update `codex-review.yml` to consume the new composites (still using local checkout until remote pinning strategy is finalized).
   - [ ] Publish guidance/tests ensuring the new composites work under `workflow_call` consumers.
 - [ ] **Phase 2 – Rework remaining workflows**
+  - [x] Modularize `go-tests.yml` (actions/go, docs/workflows/go-tests.md, README/plan updates); tests pending.
+  - [x] Modularize `release.yml` (actions/release, docs/workflows/release.md, README/plan updates); tests pending.
+  - [ ] Refactor `auto-label.yml` (planned).
+  - [ ] Refactor `codex-doc-sync.yml` (planned).
 - [ ] **Phase 3 – CLI + templates**
 - [ ] **Phase 4 – Adoption / deprecation**
 
