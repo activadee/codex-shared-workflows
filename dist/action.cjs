@@ -31940,11 +31940,12 @@ var CodexClient = class {
       const thread = codex.startThread({
         model: options.model,
         modelReasoningEffort: normalizeEffort(options.effort),
-        sandboxMode: options.sandboxMode,
+        sandboxMode: options.sandboxMode ?? "workspace-write",
         workingDirectory: options.workingDirectory,
         skipGitRepoCheck: options.skipGitRepoCheck,
         networkAccessEnabled: options.networkAccessEnabled ?? false,
-        webSearchEnabled: options.webSearchEnabled ?? false
+        webSearchEnabled: options.webSearchEnabled ?? false,
+        approvalPolicy: options.approvalPolicy ?? "untrusted"
       });
       const streamed = await thread.runStreamed(payload, { outputSchema });
       const result = await collectStreamedTurn(streamed.events);
@@ -32299,6 +32300,7 @@ var registerAutoLabelCommand = (program2) => {
       input,
       model: opts.model,
       effort: opts.effort,
+      sandboxMode: "workspace-write",
       outputSchemaPath: import_node_path4.default.resolve(AUTO_LABEL_SCHEMA),
       networkAccessEnabled: Boolean(opts.enableNetwork),
       webSearchEnabled: Boolean(opts.enableWebSearch)
@@ -39406,6 +39408,8 @@ var registerDocSyncCommand = (program2) => {
       promptPath: import_node_path12.default.resolve(opts.promptPath),
       model: opts.model,
       effort: opts.effort,
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "untrusted",
       extraEnv,
       networkAccessEnabled: Boolean(opts.enableNetwork),
       webSearchEnabled: Boolean(opts.enableWebSearch)
@@ -39654,6 +39658,7 @@ var registerReleaseCommand = (program2) => {
         input,
         model: opts.model,
         effort: opts.effort,
+        sandboxMode: "workspace-write",
         outputSchemaPath: import_node_path14.default.resolve(RELEASE_SCHEMA),
         networkAccessEnabled: Boolean(opts.enableNetwork),
         webSearchEnabled: Boolean(opts.enableWebSearch)
@@ -39776,6 +39781,7 @@ var registerReviewCommand = (program2) => {
       input,
       model: opts.model,
       effort: opts.effort,
+      sandboxMode: "workspace-write",
       outputSchemaPath: import_node_path15.default.resolve(REVIEW_SCHEMA),
       networkAccessEnabled: Boolean(opts.enableNetwork),
       webSearchEnabled: Boolean(opts.enableWebSearch)

@@ -156,12 +156,12 @@ export class CodexClient {
       const thread = codex.startThread({
         model: options.model,
         modelReasoningEffort: normalizeEffort(options.effort),
-        sandboxMode: options.sandboxMode,
+        sandboxMode: options.sandboxMode ?? 'workspace-write',
         workingDirectory: options.workingDirectory,
         skipGitRepoCheck: options.skipGitRepoCheck,
         networkAccessEnabled: options.networkAccessEnabled ?? false,
         webSearchEnabled: options.webSearchEnabled ?? false,
-        approvalPolicy: options.approvalPolicy
+        approvalPolicy: options.approvalPolicy ?? 'untrusted'
       });
 
       const streamed = await thread.runStreamed(payload, { outputSchema });
