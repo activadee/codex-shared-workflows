@@ -20,7 +20,8 @@
         "type": "object",
         "required": [
           "path",
-          "patch"
+          "patch",
+          "justification"
         ],
         "additionalProperties": false,
         "properties": {
