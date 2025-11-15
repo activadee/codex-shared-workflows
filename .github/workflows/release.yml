@@ -57,6 +57,76 @@ on:
         required: false
         type: string
         default: ""
+      enable_cache:
+        description: Enable Go module cache when running pre-release tests.
+        required: false
+        type: boolean
+        default: true
+      cache_dependency_path:
+        description: Newline-delimited glob(s) hashed for Go cache keys.
+        required: false
+        type: string
+        default: ""
+      test_working_directory:
+        description: Directory for `go test` (when enabled).
+        required: false
+        type: string
+        default: "."
+      pre_test:
+        description: Optional shell snippet executed before `go test`.
+        required: false
+        type: string
+        default: ""
+      coverage_profile:
+        description: Optional coverprofile path for `go test`.
+        required: false
+        type: string
+        default: ""
+      upload_coverage_artifact:
+        description: Upload the coverage profile artifact after tests.
+        required: false
+        type: boolean
+        default: false
+      coverage_artifact_name:
+        description: Artifact name when uploading coverage data.
+        required: false
+        type: string
+        default: release-coverage
+      race:
+        description: Run `go test` with `-race`.
+        required: false
+        type: boolean
+        default: false
+      tag_pattern:
+        description: Glob pattern used to find the previous release tag.
+        required: false
+        type: string
+        default: v*
+      prompt_extra:
+        description: Optional markdown appended to the release prompt.
+        required: false
+        type: string
+        default: ""
+      codex_model:
+        description: Optional Codex model override for release notes.
+        required: false
+        type: string
+        default: ""
+      codex_effort:
+        description: Optional Codex reasoning effort override.
+        required: false
+        type: string
+        default: ""
+      codex_args:
+        description: Additional CLI arguments forwarded to Codex.
+        required: false
+        type: string
+        default: ""
+      codex_safety_strategy:
+        description: Safety strategy passed to Codex (drop-sudo/read-only/etc.).
+        required: false
+        type: string
+        default: drop-sudo
     outputs:
       release_notes:
         description: Rendered release notes content.
@@ -73,7 +143,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     outputs:
-      release_notes: ${{ steps.render.outputs.notes }}
+      release_notes: ${{ steps.render_notes.outputs.notes }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -81,89 +151,80 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.target }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ inputs.go_version }}
-          go-version-file: ${{ inputs.go_version_file }}
-          cache: true
-
-      - name: Run tests
-        if: inputs.run_tests
-        run: go test ${{ inputs.test_flags }}
-
-      - name: Checkout shared workflow assets
+      - name: Checkout shared automation assets
         uses: actions/checkout@v5
         with:
           repository: activadee/codex-shared-workflows
-          ref: main
+          ref: ${{ github.action_ref || 'main' }}
           path: __codex_shared
 
-      - name: Determine previous tag
-        id: prev_tag
-        run: |
-          git fetch --tags --quiet
-          LAST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "")
-          echo "value=$LAST_TAG" >> "$GITHUB_OUTPUT"
+      - name: Set up Go
+        if: inputs.run_tests
+        uses: ./__codex_shared/actions/go/setup
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.go_version_file }}
+          enable-cache: ${{ inputs.enable_cache }}
+          cache-dependency-path: ${{ inputs.cache_dependency_path }}
 
-      - name: Build Codex prompt
+      - name: Pre-test setup
+        if: inputs.run_tests
+        uses: ./__codex_shared/actions/go/pre-test
+        with:
+          script: ${{ inputs.pre_test }}
+          working-directory: ${{ inputs.test_working_directory }}
+
+      - name: Run tests
+        if: inputs.run_tests
+        id: run_tests
+        uses: ./__codex_shared/actions/go/test
+        with:
+          working-directory: ${{ inputs.test_working_directory }}
+          test-flags: ${{ inputs.test_flags }}
+          coverage-profile: ${{ inputs.coverage_profile }}
+          race: ${{ inputs.race }}
+
+      - name: Upload coverage artifact
+        if: inputs.run_tests && inputs.upload_coverage_artifact && steps.run_tests.outputs.coverage_profile_abs != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.coverage_artifact_name }}
+          path: ${{ steps.run_tests.outputs.coverage_profile_abs }}
+          if-no-files-found: ignore
+
+      - name: Determine release range
+        id: range
+        uses: ./__codex_shared/actions/release/determine-range
+        with:
+          tag-pattern: ${{ inputs.tag_pattern }}
+
+      - name: Prepare Codex prompt
         id: prompt
-        run: |
-          TAG_NAME="${{ inputs.tag_name }}"
-          LAST_TAG="${{ steps.prev_tag.outputs.value }}"
-
-          if [ -z "$LAST_TAG" ]; then
-            RANGE_DESC="project start"
-            COMMITS=$(git log --pretty=format:'- %s (%h)' --no-merges)
-          else
-            RANGE_DESC="${LAST_TAG}..${GITHUB_SHA}"
-            COMMITS=$(git log --pretty=format:'- %s (%h)' --no-merges "${LAST_TAG}..${GITHUB_SHA}")
-          fi
-
-          if [ -z "$COMMITS" ]; then
-            COMMITS="- No new commits detected."
-          fi
-
-          TEMPLATE=$(cat __codex_shared/prompts/codex-release-template.md)
-
-          cat <<EOF > codex_prompt.md
-          ${TEMPLATE}
-
-          Release tag: ${TAG_NAME}
-          Commit range: ${RANGE_DESC}
-
-          Commits:
-          ${COMMITS}
-          EOF
-
-      - name: Load release schema
-        run: echo "CODEX_OUTPUT_SCHEMA=$(jq -c . __codex_shared/prompts/codex-release-schema.json)" >> "$GITHUB_ENV"
+        uses: ./__codex_shared/actions/release/prepare-prompt
+        with:
+          tag-name: ${{ inputs.tag_name }}
+          range-description: ${{ steps.range.outputs.range_description }}
+          commits-path: ${{ steps.range.outputs.commits_path }}
+          prompt-extra: ${{ inputs.prompt_extra }}
 
       - name: Generate release highlights with Codex
-        uses: activadee/codex-action@main
+        id: codex
+        uses: ./__codex_shared/actions/release/generate-highlights
         with:
           codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
-          prompt-file: codex_prompt.md
-          output-file: codex-release.json
-          output-schema: ${{ env.CODEX_OUTPUT_SCHEMA }}
-          safety-strategy: drop-sudo
+          prompt-path: ${{ steps.prompt.outputs.prompt_path }}
+          output-schema: ${{ steps.prompt.outputs.output_schema }}
+          safety-strategy: ${{ inputs.codex_safety_strategy }}
+          model: ${{ inputs.codex_model }}
+          effort: ${{ inputs.codex_effort }}
+          codex-args: ${{ inputs.codex_args }}
 
       - name: Render release notes
-        id: render
-        run: |
-          SUMMARY=$(jq -r '.overview // empty' codex-release.json)
-          {
-            if [ -n "$SUMMARY" ]; then
-              echo "$SUMMARY"
-              echo
-            fi
-            jq -r '.highlights[] | "- " + .' codex-release.json
-          } > release-notes.md
-          {
-            echo "notes<<EOF"
-            cat release-notes.md
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+        id: render_notes
+        uses: ./__codex_shared/actions/release/render-notes
+        with:
+          codex-output-path: ${{ steps.codex.outputs.output_path }}
+          notes-path: release-notes.md
 
       - name: Download build artifacts
         if: inputs.download_artifacts
