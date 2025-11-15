@@ -1,5 +1,5 @@
 name: "Run Codex doc sync"
-description: "Invoke Codex with the doc-sync prompt and apply resulting documentation updates."
+description: "Invoke Codex with the doc-sync prompt and let Codex update, commit, and push documentation changes."
 inputs:
   codex-auth-json-b64:
     description: "Base64-encoded Codex auth.json"
@@ -14,9 +14,6 @@ inputs:
     default: "codex-output.json"
   output-schema:
     description: "JSON schema controlling the Codex response"
-    required: true
-  doc-allowlist-path:
-    description: "JSON file listing doc files that Codex is allowed to edit"
     required: true
   safety-strategy:
     description: "Codex sandbox mode"
@@ -34,19 +31,26 @@ inputs:
     description: "Additional arguments forwarded to codex exec"
     required: false
     default: ""
+  pass-through-env:
+    description: "Comma or newline separated env vars that should be forwarded to Codex (e.g., GH_TOKEN)."
+    required: false
+    default: ""
 outputs:
   output_path:
     description: "Path to the Codex output file"
     value: ${{ inputs.output-path }}
-  summary_path:
-    description: "Path to the JSON file summarizing applied edits"
-    value: ${{ steps.summary.outputs.summary_path }}
-  changes_applied:
-    description: "\"true\" when at least one edit was applied"
-    value: ${{ steps.summary.outputs.changes_applied }}
-  applied_files:
-    description: "JSON array of documentation files that were updated"
-    value: ${{ steps.summary.outputs.applied_files }}
+  summary:
+    description: "Short summary of what Codex did."
+    value: ${{ steps.parse.outputs.summary }}
+  changes_committed:
+    description: "\"true\" when Codex committed and pushed documentation changes."
+    value: ${{ steps.parse.outputs.changes_committed }}
+  updated_files:
+    description: "JSON array of documentation files that Codex touched."
+    value: ${{ steps.parse.outputs.updated_files }}
+  follow_ups:
+    description: "JSON array describing additional doc work, if any."
+    value: ${{ steps.parse.outputs.follow_ups }}
 runs:
   using: "composite"
   steps:
@@ -61,34 +65,29 @@ runs:
         model: ${{ inputs.model }}
         effort: ${{ inputs.effort }}
         codex-args: ${{ inputs.codex-args }}
+        pass-through-env: ${{ inputs.pass-through-env }}
 
-    - name: Apply documentation updates
+    - id: parse
+      name: Parse Codex response
       shell: bash
       env:
-        CODEX_DOC_SYNC_OUTPUT_PATH: ${{ inputs.output-path }}
-        CODEX_DOC_SYNC_ALLOWLIST_PATH: ${{ inputs.doc-allowlist-path }}
-        CODEX_DOC_SYNC_SUMMARY_PATH: doc-sync-summary.json
+        OUTPUT_PATH: ${{ inputs.output-path }}
       run: |
         set -euo pipefail
-        node "$GITHUB_ACTION_PATH/../lib/apply-doc-updates.js"
-
-    - id: summary
-      name: Summarize applied edits
-      shell: bash
-      env:
-        SUMMARY_PATH: doc-sync-summary.json
-      run: |
-        set -euo pipefail
-        if [ ! -f "$SUMMARY_PATH" ]; then
-          echo "::error::Missing doc-sync summary at $SUMMARY_PATH" >&2
+        if [ ! -f "$OUTPUT_PATH" ]; then
+          echo "::error::Missing Codex output at $OUTPUT_PATH" >&2
           exit 1
         fi
-        applied_count=$(jq '.applied | length' "$SUMMARY_PATH")
-        applied_files=$(jq -c '[.applied[]?.path]' "$SUMMARY_PATH")
-        changes="false"
-        if [ "${applied_count}" != "0" ]; then
-          changes="true"
-        fi
-        echo "summary_path=$SUMMARY_PATH" >> "$GITHUB_OUTPUT"
-        echo "changes_applied=$changes" >> "$GITHUB_OUTPUT"
-        echo "applied_files=$applied_files" >> "$GITHUB_OUTPUT"
+        summary=$(jq -r '.summary // ""' "$OUTPUT_PATH")
+        committed=$(jq -r '.changes_committed // false' "$OUTPUT_PATH")
+        updated=$(jq -c '.updated_files // []' "$OUTPUT_PATH")
+        followups=$(jq -c '.follow_ups // []' "$OUTPUT_PATH")
+
+        {
+          echo "summary<<EOF"
+          printf '%s\n' "$summary"
+          echo "EOF"
+          echo "changes_committed=$committed"
+          echo "updated_files=$updated"
+          echo "follow_ups=$followups"
+        } >> "$GITHUB_OUTPUT"

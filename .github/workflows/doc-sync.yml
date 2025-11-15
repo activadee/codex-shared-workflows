@@ -61,11 +61,11 @@ on:
         required: false
         type: string
         default: ""
-      commit_message:
-        description: Commit subject (should include [skip ci] tokens to avoid retriggering CI).
+      pass_through_env:
+        description: Comma or newline separated env vars forwarded to Codex (e.g., GH_TOKEN).
         required: false
         type: string
-        default: "docs: sync documentation [skip ci] [skip github-actions]"
+        default: "GH_TOKEN,GITHUB_TOKEN"
     secrets:
       CODEX_AUTH_JSON_B64:
         description: Base64 encoded auth.json for Codex CLI.
@@ -86,13 +86,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
-      applied_files: ${{ steps.edit.outputs.applied_files }}
-      commit_pushed: ${{ steps.push.outputs.pushed }}
+      summary: ${{ steps.edit.outputs.summary }}
+      updated_files: ${{ steps.edit.outputs.updated_files }}
+      changes_committed: ${{ steps.edit.outputs.changes_committed }}
+      follow_ups: ${{ steps.edit.outputs.follow_ups }}
     steps:
       - name: Checkout repository
         uses: activadee/codex-shared-workflows/actions/common/checkout-target@main
         with:
           fetch-depth: 0
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Collect doc-sync context
         id: context
@@ -127,17 +134,11 @@ jobs:
           codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
           prompt-path: ${{ steps.prompt.outputs.prompt_path }}
           output-schema: ${{ steps.prompt.outputs.output_schema }}
-          doc-allowlist-path: ${{ steps.prepare.outputs.doc_allowlist_path }}
           safety-strategy: ${{ inputs.safety_strategy }}
           model: ${{ inputs.model }}
           effort: ${{ inputs.effort }}
           codex-args: ${{ inputs.codex_args }}
-
-      - name: Commit doc updates
-        id: push
-        uses: activadee/codex-shared-workflows/actions/doc-sync/push@main
-        with:
-          changes-applied: ${{ steps.edit.outputs.changes_applied }}
-          summary-path: ${{ steps.edit.outputs.summary_path }}
-          commit-message: ${{ inputs.commit_message }}
-          applied-files: ${{ steps.edit.outputs.applied_files }}
+          pass-through-env: ${{ inputs.pass_through_env }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

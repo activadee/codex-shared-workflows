@@ -3,8 +3,9 @@
   "title": "Codex Doc Sync Output",
   "type": "object",
   "required": [
-    "edits",
     "summary",
+    "changes_committed",
+    "updated_files",
     "follow_ups"
   ],
   "additionalProperties": false,
@@ -13,31 +14,15 @@
       "type": "string",
       "description": "Short summary of whether docs were updated and why."
     },
-    "edits": {
+    "changes_committed": {
+      "type": "boolean",
+      "description": "True when documentation updates were staged, committed, and pushed in this run."
+    },
+    "updated_files": {
       "type": "array",
-      "description": "Documentation updates that can be applied automatically.",
+      "description": "Documentation files touched by Codex.",
       "items": {
-        "type": "object",
-        "required": [
-          "path",
-          "content",
-          "justification"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "Relative path to the documentation file being edited."
-          },
-          "content": {
-            "type": "string",
-            "description": "Complete replacement text for the target documentation file."
-          },
-          "justification": {
-            "type": "string",
-            "description": "1-3 sentence explanation of why the change is needed."
-          }
-        }
+        "type": "string"
       }
     },
     "follow_ups": {

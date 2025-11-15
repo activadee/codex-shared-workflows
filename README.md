@@ -17,7 +17,7 @@ Reusable GitHub Actions workflows for Codex-enabled repositories. These workflow
   Calls Codex to suggest up to three labels for new or updated issues, creating labels when needed.
 
 - `.github/workflows/doc-sync.yml`  
-  Invokes Codex on pull requests to review the current diff, determine whether existing documentation is stale, and auto-commit safe markdown changes.
+  Invokes Codex on pull requests to review the current diff, edit the necessary documentation files, and push a `[skip ci][skip github-actions]` commit directly from the workflow (no follow-up jobs needed).
 
 
 ## Using the workflows
@@ -179,7 +179,7 @@ Outputs:
 | `model` | _empty_ | Optional Codex model override. |
 | `effort` | _empty_ | Optional reasoning effort override. |
 | `codex_args` | _empty_ | Extra CLI flags forwarded to `codex exec`. |
-| `commit_message` | `docs: sync documentation [skip ci] [skip github-actions]` | Subject line for the GitHub bot commit that avoids retriggering CI. |
+| `pass_through_env` | `GH_TOKEN,GITHUB_TOKEN` | Env vars forwarded to Codex so it can run `git`/`gh` commands with the right credentials. |
 
 ## Repository layout
 
@@ -218,7 +218,6 @@ actions/
     prepare/
     build-prompt/
     edit/
-    push/
 workflows/
 workflow-templates/
 cli/
