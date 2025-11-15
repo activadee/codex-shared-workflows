@@ -73,7 +73,7 @@ runs:
         model: ${{ inputs.model }}
         effort: ${{ inputs.effort }}
         codex-args: ${{ inputs.codex_args }}
-        sandbox-mode: danger-full-access
+        sandbox: danger-full-access
 
     - name: Verify documentation-only changes
       shell: bash

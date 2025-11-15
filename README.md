@@ -169,7 +169,7 @@ Outputs:
 | Input | Default | Notes |
 | --- | --- | --- |
 | `doc_globs` | `docs/**`, `**/*.md`, `README*` | Newline-separated glob list that defines which files count as documentation. |
-| `safety_strategy` | `drop-sudo` | Passed directly to `activadee/codex-action` (the workflow always runs with `sandbox-mode: danger-full-access`). |
+| `safety_strategy` | `drop-sudo` | Passed directly to `activadee/codex-action` (the workflow always runs with `sandbox: danger-full-access`). |
 | `model` / `effort` | _empty_ | Optional overrides for Codex model and reasoning effort. |
 | `codex_args` | _empty_ | Additional CLI arguments forwarded to `codex exec`. |
 
