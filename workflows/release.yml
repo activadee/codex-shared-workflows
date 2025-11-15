@@ -1,0 +1,237 @@
+name: Codex Release
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Tag to create or update (e.g. v0.1.0).
+        required: true
+        type: string
+      release_title:
+        description: Optional display name for the release (defaults to tag).
+        required: false
+        type: string
+        default: ""
+      target:
+        description: Commit or branch to release.
+        required: false
+        type: string
+        default: main
+      draft:
+        description: Create the release in draft mode.
+        required: false
+        type: boolean
+        default: false
+      go_version:
+        description: Go version to install (ignored if go_version_file provided).
+        required: false
+        type: string
+        default: ""
+      go_version_file:
+        description: Path to file containing Go version (e.g. go.mod).
+        required: false
+        type: string
+        default: go.mod
+      run_tests:
+        description: Whether to run go test before releasing.
+        required: false
+        type: boolean
+        default: true
+      test_flags:
+        description: Additional flags passed to go test.
+        required: false
+        type: string
+        default: ./...
+      download_artifacts:
+        description: Download artifacts produced by earlier jobs before publishing release.
+        required: false
+        type: boolean
+        default: false
+      artifacts_path:
+        description: Directory where downloaded artifacts will be stored.
+        required: false
+        type: string
+        default: release-artifacts
+      artifact_glob:
+        description: File glob (relative to artifacts_path) to upload with the release.
+        required: false
+        type: string
+        default: ""
+      enable_cache:
+        description: Enable Go module cache when running pre-release tests.
+        required: false
+        type: boolean
+        default: true
+      cache_dependency_path:
+        description: Newline-delimited glob(s) hashed for Go cache keys.
+        required: false
+        type: string
+        default: ""
+      test_working_directory:
+        description: Directory for `go test` (when enabled).
+        required: false
+        type: string
+        default: "."
+      pre_test:
+        description: Optional shell snippet executed before `go test`.
+        required: false
+        type: string
+        default: ""
+      coverage_profile:
+        description: Optional coverprofile path for `go test`.
+        required: false
+        type: string
+        default: ""
+      upload_coverage_artifact:
+        description: Upload the coverage profile artifact after tests.
+        required: false
+        type: boolean
+        default: false
+      coverage_artifact_name:
+        description: Artifact name when uploading coverage data.
+        required: false
+        type: string
+        default: release-coverage
+      race:
+        description: Run `go test` with `-race`.
+        required: false
+        type: boolean
+        default: false
+      tag_pattern:
+        description: Glob pattern used to find the previous release tag.
+        required: false
+        type: string
+        default: v*
+      prompt_extra:
+        description: Optional markdown appended to the release prompt.
+        required: false
+        type: string
+        default: ""
+      codex_model:
+        description: Optional Codex model override for release notes.
+        required: false
+        type: string
+        default: ""
+      codex_effort:
+        description: Optional Codex reasoning effort override.
+        required: false
+        type: string
+        default: ""
+      codex_args:
+        description: Additional CLI arguments forwarded to Codex.
+        required: false
+        type: string
+        default: ""
+      codex_safety_strategy:
+        description: Safety strategy passed to Codex (drop-sudo/read-only/etc.).
+        required: false
+        type: string
+        default: drop-sudo
+    outputs:
+      release_notes:
+        description: Rendered release notes content.
+        value: ${{ jobs.release.outputs.release_notes }}
+    secrets:
+      CODEX_AUTH_JSON_B64:
+        description: Base64 encoded auth.json for Codex CLI.
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_notes: ${{ steps.render_notes.outputs.notes }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.target }}
+
+      - name: Set up Go
+        if: inputs.run_tests
+        uses: activadee/codex-shared-workflows/actions/go/setup@main
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.go_version_file }}
+          enable-cache: ${{ inputs.enable_cache }}
+          cache-dependency-path: ${{ inputs.cache_dependency_path }}
+
+      - name: Pre-test setup
+        if: inputs.run_tests
+        uses: activadee/codex-shared-workflows/actions/go/pre-test@main
+        with:
+          script: ${{ inputs.pre_test }}
+          working-directory: ${{ inputs.test_working_directory }}
+
+      - name: Run tests
+        if: inputs.run_tests
+        id: run_tests
+        uses: activadee/codex-shared-workflows/actions/go/test@main
+        with:
+          working-directory: ${{ inputs.test_working_directory }}
+          test-flags: ${{ inputs.test_flags }}
+          coverage-profile: ${{ inputs.coverage_profile }}
+          race: ${{ inputs.race }}
+
+      - name: Upload coverage artifact
+        if: inputs.run_tests && inputs.upload_coverage_artifact && steps.run_tests.outputs.coverage_profile_abs != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.coverage_artifact_name }}
+          path: ${{ steps.run_tests.outputs.coverage_profile_abs }}
+          if-no-files-found: ignore
+
+      - name: Determine release range
+        id: range
+        uses: activadee/codex-shared-workflows/actions/release/determine-range@main
+        with:
+          tag-pattern: ${{ inputs.tag_pattern }}
+
+      - name: Prepare Codex prompt
+        id: prompt
+        uses: activadee/codex-shared-workflows/actions/release/prepare-prompt@main
+        with:
+          tag-name: ${{ inputs.tag_name }}
+          range-description: ${{ steps.range.outputs.range_description }}
+          commits-path: ${{ steps.range.outputs.commits_path }}
+          prompt-extra: ${{ inputs.prompt_extra }}
+
+      - name: Generate release highlights with Codex
+        id: codex
+        uses: activadee/codex-shared-workflows/actions/release/generate-highlights@main
+        with:
+          codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+          prompt-path: ${{ steps.prompt.outputs.prompt_path }}
+          output-schema: ${{ steps.prompt.outputs.output_schema }}
+          safety-strategy: ${{ inputs.codex_safety_strategy }}
+          model: ${{ inputs.codex_model }}
+          effort: ${{ inputs.codex_effort }}
+          codex-args: ${{ inputs.codex_args }}
+
+      - name: Render release notes
+        id: render_notes
+        uses: activadee/codex-shared-workflows/actions/release/render-notes@main
+        with:
+          codex-output-path: ${{ steps.codex.outputs.output_path }}
+          notes-path: release-notes.md
+
+      - name: Download build artifacts
+        if: inputs.download_artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ inputs.artifacts_path }}
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          target_commitish: ${{ inputs.target }}
+          name: ${{ inputs.release_title || inputs.tag_name }}
+          draft: ${{ inputs.draft }}
+          body_path: release-notes.md
+          files: ${{ inputs.download_artifacts && inputs.artifact_glob != '' && inputs.artifact_glob || '' }}

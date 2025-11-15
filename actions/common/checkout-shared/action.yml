@@ -1,0 +1,30 @@
+name: "Checkout shared automation assets"
+description: "Check out the Codex shared workflows repository (or override) into a subdirectory."
+inputs:
+  repository:
+    description: "Repository containing shared assets (owner/name)."
+    required: false
+    default: ""
+  ref:
+    description: "Branch, tag, or SHA for the shared repository."
+    required: false
+    default: ""
+  path:
+    description: "Destination path for the checkout."
+    required: false
+    default: "__codex_shared"
+  token:
+    description: "Token used for checkout (defaults to `github.token`)."
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout shared repo
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ inputs.repository != '' && inputs.repository || github.action_repository || github.repository }}
+        ref: ${{ inputs.ref != '' && inputs.ref || github.action_ref || github.ref }}
+        path: ${{ inputs.path }}
+        fetch-depth: 1
+        token: ${{ inputs.token != '' && inputs.token || github.token }}

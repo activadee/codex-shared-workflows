@@ -1,0 +1,45 @@
+name: "Prepare Codex review prompt"
+description: "Copy the Codex review prompt template, append optional instructions, and surface the JSON schema."
+inputs:
+  prompt-extra:
+    description: "Additional markdown appended to the shared prompt."
+    required: false
+    default: ""
+  prompt-path:
+    description: "Location where the populated prompt will be written."
+    required: false
+    default: "codex_prompt.md"
+outputs:
+  prompt_path:
+    description: "Path to the populated prompt file."
+    value: ${{ steps.prompt.outputs.prompt_path }}
+  output_schema:
+    description: "JSON schema string for Codex output validation."
+    value: ${{ steps.schema.outputs.schema }}
+runs:
+  using: "composite"
+  steps:
+    - id: prompt
+      name: Build prompt file
+      shell: bash
+      env:
+        PROMPT_EXTRA: ${{ inputs.prompt-extra }}
+        PROMPT_PATH: ${{ inputs.prompt-path }}
+      run: |
+        set -euo pipefail
+        repo_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        template_path="$repo_root/prompts/codex-review.md"
+        cp "$template_path" "$PROMPT_PATH"
+        if [ -n "${PROMPT_EXTRA:-}" ]; then
+          printf '\n\n%s\n' "$PROMPT_EXTRA" >> "$PROMPT_PATH"
+        fi
+        echo "prompt_path=$PROMPT_PATH" >> "$GITHUB_OUTPUT"
+
+    - id: schema
+      name: Load output schema
+      shell: bash
+      run: |
+        set -euo pipefail
+        repo_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        schema=$(jq -c . "$repo_root/prompts/codex-review-schema.json")
+        echo "schema=$schema" >> "$GITHUB_OUTPUT"

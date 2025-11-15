@@ -1,0 +1,102 @@
+name: Go Tests
+
+on:
+  workflow_call:
+    inputs:
+      go_version:
+        description: Go version to install (ignored if go_version_file is set).
+        required: false
+        type: string
+        default: ""
+      go_version_file:
+        description: Path to go.mod or .tool-versions file containing the Go version.
+        required: false
+        type: string
+        default: go.mod
+      working_directory:
+        description: Directory to run tests from. Defaults to repository root.
+        required: false
+        type: string
+        default: .
+      test_flags:
+        description: Extra flags passed to go test (e.g. ./... -run TestFoo -count=1).
+        required: false
+        type: string
+        default: ./...
+      enable_cache:
+        description: Whether to enable setup-go cache integration.
+        required: false
+        type: boolean
+        default: true
+      pre_test:
+        description: Optional shell script to run before go test.
+        required: false
+        type: string
+        default: ""
+      cache_dependency_path:
+        description: Optional glob(s) for cache dependency hashing (newline-delimited).
+        required: false
+        type: string
+        default: ""
+      coverage_profile:
+        description: Optional coverprofile path (relative to working_directory).
+        required: false
+        type: string
+        default: ""
+      upload_coverage_artifact:
+        description: Upload the generated coverage profile as an artifact.
+        required: false
+        type: boolean
+        default: false
+      coverage_artifact_name:
+        description: Artifact name when uploading coverage.
+        required: false
+        type: string
+        default: go-coverage
+      race:
+        description: Run go test with -race.
+        required: false
+        type: boolean
+        default: false
+    secrets: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: activadee/codex-shared-workflows/actions/go/setup@main
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.go_version_file }}
+          enable-cache: ${{ inputs.enable_cache }}
+          cache-dependency-path: ${{ inputs.cache_dependency_path }}
+
+      - name: Pre-test setup
+        uses: activadee/codex-shared-workflows/actions/go/pre-test@main
+        with:
+          script: ${{ inputs.pre_test }}
+          working-directory: ${{ inputs.working_directory }}
+
+      - name: Run go test
+        id: run_tests
+        uses: activadee/codex-shared-workflows/actions/go/test@main
+        with:
+          working-directory: ${{ inputs.working_directory }}
+          test-flags: ${{ inputs.test_flags }}
+          coverage-profile: ${{ inputs.coverage_profile }}
+          race: ${{ inputs.race }}
+
+      - name: Upload coverage artifact
+        if: inputs.upload_coverage_artifact && steps.run_tests.outputs.coverage_profile_abs != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.coverage_artifact_name }}
+          path: ${{ steps.run_tests.outputs.coverage_profile_abs }}
+          if-no-files-found: ignore

@@ -1,0 +1,72 @@
+name: "Determine release commit range"
+description: "Discover the previous tag and collect commit summaries for release notes."
+inputs:
+  target-ref:
+    description: "Commit SHA or ref being released. Defaults to the current workflow SHA."
+    required: false
+    default: ""
+  tag-pattern:
+    description: "Glob passed to git describe when locating the previous tag."
+    required: false
+    default: "v*"
+  commits-path:
+    description: "File that will contain the formatted commit list."
+    required: false
+    default: "release-commits.md"
+outputs:
+  previous_tag:
+    description: "Most recent tag matching tag-pattern (may be empty)."
+    value: ${{ steps.range.outputs.previous_tag }}
+  range_description:
+    description: "Human-friendly description of the commit range."
+    value: ${{ steps.range.outputs.range_description }}
+  commits_path:
+    description: "Path to the file containing the commit bullet list."
+    value: ${{ steps.range.outputs.commits_path }}
+runs:
+  using: "composite"
+  steps:
+    - id: range
+      shell: bash
+      env:
+        TARGET_REF_INPUT: ${{ inputs.target-ref }}
+        TAG_PATTERN: ${{ inputs.tag-pattern }}
+        COMMITS_PATH: ${{ inputs.commits-path }}
+      run: |
+        set -euo pipefail
+
+        target_ref="$TARGET_REF_INPUT"
+        if [ -z "$target_ref" ]; then
+          target_ref="$(git rev-parse HEAD)"
+        fi
+
+        git fetch --tags --quiet
+        last_tag=$(git describe --tags --abbrev=0 --match "$TAG_PATTERN" 2>/dev/null || true)
+        range_desc=""
+        commit_range=""
+        if [ -z "$last_tag" ]; then
+          range_desc="project start"
+          commit_range="$target_ref"
+        else
+          range_desc="${last_tag}..$target_ref"
+          commit_range="${last_tag}..$target_ref"
+        fi
+
+        if [ -z "$commit_range" ]; then
+          log_cmd=(git log --pretty=format:'- %s (%h)' --no-merges)
+        else
+          log_cmd=(git log --pretty=format:'- %s (%h)' --no-merges "$commit_range")
+        fi
+
+        mkdir -p "$(dirname "$COMMITS_PATH")"
+        if "${log_cmd[@]}" > "$COMMITS_PATH" && [ -s "$COMMITS_PATH" ]; then
+          :
+        else
+          echo "- No new commits detected." > "$COMMITS_PATH"
+        fi
+
+        {
+          echo "previous_tag=$last_tag"
+          echo "range_description=$range_desc"
+          echo "commits_path=$COMMITS_PATH"
+        } >> "$GITHUB_OUTPUT"

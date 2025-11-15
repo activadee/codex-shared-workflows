@@ -1,0 +1,120 @@
+name: Codex Review
+
+on:
+  workflow_call:
+    inputs:
+      safety_strategy:
+        description: Safety strategy passed to codex-action (drop-sudo/read-only/unprivileged-user/unsafe).
+        required: false
+        type: string
+        default: drop-sudo
+      prompt_extra:
+        description: Optional extra markdown appended to the default prompt.
+        required: false
+        type: string
+        default: ""
+      model:
+        description: Optional Codex model override.
+        required: false
+        type: string
+        default: ""
+      effort:
+        description: Optional Codex reasoning effort override.
+        required: false
+        type: string
+        default: ""
+      codex_args:
+        description: Additional arguments passed to codex exec (JSON array or shell string).
+        required: false
+        type: string
+        default: ""
+    secrets:
+      CODEX_AUTH_JSON_B64:
+        description: Base64 encoded auth.json for Codex CLI (ChatGPT subscription auth).
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Run Codex review
+    if: github.event.pull_request != null && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base reference
+        run: git fetch --no-tags origin ${{ github.event.pull_request.base.ref }}
+
+      - name: Collect review inputs
+        uses: activadee/codex-shared-workflows/actions/codex-review/collect-context@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Codex prompt
+        id: prepare_prompt
+        uses: activadee/codex-shared-workflows/actions/codex-review/prepare-prompt@main
+        with:
+          prompt-extra: ${{ inputs.prompt_extra }}
+
+      - name: Run Codex review
+        id: run_codex
+        uses: activadee/codex-shared-workflows/actions/codex-review/run-review@main
+        with:
+          codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+          prompt-path: ${{ steps.prepare_prompt.outputs.prompt_path }}
+          output-schema: ${{ steps.prepare_prompt.outputs.output_schema }}
+          safety-strategy: ${{ inputs.safety_strategy }}
+          model: ${{ inputs.model }}
+          effort: ${{ inputs.effort }}
+          codex-args: ${{ inputs.codex_args }}
+
+      - name: Normalize Codex review output
+        uses: activadee/codex-shared-workflows/actions/codex-review/normalize-output@main
+        with:
+          output-path: ${{ steps.run_codex.outputs.output_path }}
+
+      - name: Submit review
+        if: success()
+        uses: activadee/codex-shared-workflows/actions/codex-review/submit-review@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          review-file: review-comments.json
+
+      - name: Upload review artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-review-debug-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            diff.txt
+            files.json
+            files.jsonl
+            existing_issue_comments.json
+            existing_issue_comments.jsonl
+            existing_reviews.json
+            existing_reviews.jsonl
+            existing_review_comments.json
+            existing_review_comments.jsonl
+            existing_review_threads.json
+            existing_review_threads.jsonl
+            review_metadata.json
+            codex_prompt.md
+            codex-output.json
+            review-comments.json
+            skipped-comments.json

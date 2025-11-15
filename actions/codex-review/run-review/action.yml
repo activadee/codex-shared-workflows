@@ -1,0 +1,51 @@
+name: "Run Codex review"
+description: "Invoke Codex with the prepared prompt and schema to generate review output."
+inputs:
+  codex-auth-json-b64:
+    description: "Base64 encoded Codex auth.json"
+    required: true
+  prompt-path:
+    description: "Prompt file passed to Codex"
+    required: false
+    default: "codex_prompt.md"
+  output-path:
+    description: "Destination file for Codex output"
+    required: false
+    default: "codex-output.json"
+  output-schema:
+    description: "JSON schema describing expected Codex output"
+    required: true
+  safety-strategy:
+    description: "Codex sandbox strategy"
+    required: false
+    default: "drop-sudo"
+  model:
+    description: "Optional Codex model override"
+    required: false
+    default: ""
+  effort:
+    description: "Optional Codex reasoning effort"
+    required: false
+    default: ""
+  codex-args:
+    description: "Additional CLI args forwarded to codex exec"
+    required: false
+    default: ""
+outputs:
+  output_path:
+    description: "Path to the Codex output JSON"
+    value: ${{ inputs.output-path }}
+runs:
+  using: "composite"
+  steps:
+    - name: Run Codex review
+      uses: activadee/codex-action@main
+      with:
+        codex-auth-json-b64: ${{ inputs.codex-auth-json-b64 }}
+        prompt-file: ${{ inputs.prompt-path }}
+        output-file: ${{ inputs.output-path }}
+        output-schema: ${{ inputs.output-schema }}
+        safety-strategy: ${{ inputs.safety-strategy }}
+        model: ${{ inputs.model }}
+        effort: ${{ inputs.effort }}
+        codex-args: ${{ inputs.codex-args }}

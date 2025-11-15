@@ -1,0 +1,29 @@
+name: "Set up Go toolchain"
+description: "Install Go using actions/setup-go with caching support."
+inputs:
+  go-version:
+    description: "Explicit Go version to install (e.g. 1.22)."
+    required: false
+    default: ""
+  go-version-file:
+    description: "Path to go.mod or tool-versions file declaring the Go version."
+    required: false
+    default: "go.mod"
+  enable-cache:
+    description: "Enable module cache integration."
+    required: false
+    default: "true"
+  cache-dependency-path:
+    description: "Optional newline-delimited glob of files to hash for cache key."
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.go-version-file }}
+        cache: ${{ inputs.enable-cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}

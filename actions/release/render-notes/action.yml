@@ -1,0 +1,47 @@
+name: "Render release notes"
+description: "Convert Codex JSON into Markdown release notes."
+inputs:
+  codex-output-path:
+    description: "Path to Codex JSON output."
+    required: false
+    default: "codex-release.json"
+  notes-path:
+    description: "Destination markdown file."
+    required: false
+    default: "release-notes.md"
+outputs:
+  notes:
+    description: "Release notes markdown string."
+    value: ${{ steps.render.outputs.notes }}
+  notes_path:
+    description: "Path to the markdown file."
+    value: ${{ inputs.notes-path }}
+runs:
+  using: "composite"
+  steps:
+    - id: render
+      shell: bash
+      env:
+        CODEX_OUTPUT_PATH: ${{ inputs.codex-output-path }}
+        NOTES_PATH: ${{ inputs.notes-path }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$CODEX_OUTPUT_PATH" ]; then
+          echo "Missing Codex JSON: $CODEX_OUTPUT_PATH" >&2
+          exit 1
+        fi
+        summary=$(jq -r '.overview // empty' "$CODEX_OUTPUT_PATH")
+        jq -r '.highlights[]? | "- " + .' "$CODEX_OUTPUT_PATH" > "$NOTES_PATH".tmp || true
+        {
+          if [ -n "$summary" ]; then
+            echo "$summary"
+            echo
+          fi
+          cat "$NOTES_PATH".tmp
+        } > "$NOTES_PATH"
+        rm -f "$NOTES_PATH".tmp
+        {
+          echo "notes<<'EOF'"
+          cat "$NOTES_PATH"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"

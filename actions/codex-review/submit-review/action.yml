@@ -1,0 +1,24 @@
+name: "Submit Codex review"
+description: "Post inline review comments and a summary based on normalized Codex output."
+inputs:
+  github-token:
+    description: "Token with pull request review scope."
+    required: true
+  review-file:
+    description: "Path to the normalized review JSON file."
+    required: false
+    default: "review-comments.json"
+runs:
+  using: "composite"
+  steps:
+    - name: Submit review comments
+      uses: actions/github-script@v7
+      env:
+        REVIEW_FILE: ${{ inputs.review-file }}
+        CODEX_ACTION_ROOT: ${{ github.action_path }}/..
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const path = require('path');
+          const submitReview = require(path.join(process.env.CODEX_ACTION_ROOT, 'lib', 'submit-review.js'));
+          await submitReview({ github, context, core });

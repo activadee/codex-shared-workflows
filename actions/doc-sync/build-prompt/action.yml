@@ -1,0 +1,60 @@
+name: "Build doc-sync prompt"
+description: "Render the Codex prompt with repo metadata, scope, and commit summary."
+inputs:
+  base_ref:
+    description: "Base branch reference for the PR"
+    required: true
+  head_ref:
+    description: "Head branch reference"
+    required: true
+  pr_number:
+    description: "Pull request number"
+    required: true
+  repository:
+    description: "owner/repo string"
+    required: true
+  report_path:
+    description: "Path to the doc-sync report file"
+    required: true
+  doc_globs_path:
+    description: "File containing doc glob patterns"
+    required: true
+  prompt_path:
+    description: "Destination file for the rendered prompt"
+    required: true
+  commits_path:
+    description: "Path to the commit summary file"
+    required: true
+  template_path:
+    description: "Path to the prompt template"
+    required: false
+    default: "prompts/codex-doc-sync.md"
+runs:
+  using: "composite"
+  steps:
+    - name: Build prompt
+      shell: bash
+      env:
+        BASE_REF: ${{ inputs.base_ref }}
+        HEAD_REF: ${{ inputs.head_ref }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        REPOSITORY: ${{ inputs.repository }}
+        REPORT_PATH: ${{ inputs.report_path }}
+        DOC_GLOBS_PATH: ${{ inputs.doc_globs_path }}
+        PROMPT_PATH: ${{ inputs.prompt_path }}
+        COMMITS_PATH: ${{ inputs.commits_path }}
+        TEMPLATE_PATH_INPUT: ${{ inputs.template_path }}
+        ACTION_ROOT: ${{ github.action_path }}
+      run: |
+        template="$TEMPLATE_PATH_INPUT"
+        if [ ! -f "$template" ]; then
+          alt="$ACTION_ROOT/../../$TEMPLATE_PATH_INPUT"
+          if [ -f "$alt" ]; then
+            template="$alt"
+          fi
+        fi
+        if [ ! -f "$template" ]; then
+          echo "Prompt template not found: $TEMPLATE_PATH_INPUT" >&2
+          exit 1
+        fi
+        TEMPLATE_PATH="$template" node "$ACTION_ROOT/../lib/prepare_prompt.js"

@@ -4,19 +4,19 @@ Reusable GitHub Actions workflows for Codex-enabled repositories. These workflow
 
 ## Workflows
 
-- `.github/workflows/codex-review.yml`  
+- `workflows/codex-review.yml`  
   Runs a Codex-powered pull request review. It collects PR context, executes `activadee/codex-action`, normalizes the output, and posts inline review comments plus a summary.
 
-- `.github/workflows/go-tests.yml`  
+- `workflows/go-tests.yml`  
   Installs Go, caches dependencies, and executes `go test` with configurable flags.
 
-- `.github/workflows/release.yml`  
+- `workflows/release.yml`  
   Generates release notes with Codex and publishes a GitHub release, optionally running `go test` first.
 
-- `.github/workflows/auto-label.yml`  
+- `workflows/auto-label.yml`  
   Calls Codex to suggest up to three labels for new or updated issues, creating labels when needed.
 
-- `.github/workflows/codex-doc-sync.yml`  
+- `workflows/codex-doc-sync.yml`  
   Runs Codex in a dedicated job to edit and commit documentation changes, then hands off to a follow-up job that applies the generated bundle and pushes it to the PR branch while posting the doc summary.
 
 ## Using the workflows
@@ -33,14 +33,14 @@ on:
 
 jobs:
   codex-review:
-    uses: activadee/codex-shared-workflows/.github/workflows/codex-review.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/codex-review.yml@v1
     secrets: inherit
     with:
       prompt_extra: |
         Prioritize security regressions and user-facing bugs.
 
   auto-label:
-    uses: activadee/codex-shared-workflows/.github/workflows/auto-label.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/auto-label.yml@v1
     secrets: inherit
     with:
       max_labels: 3
@@ -57,13 +57,13 @@ on:
 
 jobs:
   go-tests:
-    uses: activadee/codex-shared-workflows/.github/workflows/go-tests.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/go-tests.yml@v1
     with:
       go_version_file: go.mod
       test_flags: ./... -race -count=1
 
   release:
-    uses: activadee/codex-shared-workflows/.github/workflows/release.yml@v1
+    uses: activadee/codex-shared-workflows/workflows/release.yml@v1
     secrets: inherit
     with:
       tag_name: v0.2.0
@@ -111,8 +111,13 @@ Required secrets for `codex-doc-sync.yml`:
 | `go_version_file` | `go.mod` | File that specifies the Go version. |
 | `working_directory` | `.` | Directory where `go test` runs. |
 | `test_flags` | `./...` | Flags appended to `go test`. |
-| `enable_cache` | `true` | Toggle `actions/setup-go` module cache. |
+| `enable_cache` | `true` | Toggle Go module cache restoration. |
+| `cache_dependency_path` | _empty_ | Newline-delimited glob(s) hashed for cache keys. |
 | `pre_test` | _empty_ | Optional shell snippet executed before `go test`. |
+| `coverage_profile` | _empty_ | Relative path passed to `-coverprofile`. Enables coverage mode when set. |
+| `upload_coverage_artifact` | `false` | Upload the generated coverprofile via `actions/upload-artifact`. |
+| `coverage_artifact_name` | `go-coverage` | Name for the uploaded coverage artifact. |
+| `race` | `false` | Run `go test` with `-race`. |
 
 `release.yml` inputs:
 
@@ -126,9 +131,23 @@ Required secrets for `codex-doc-sync.yml`:
 | `go_version_file` | `go.mod` | File declaring Go version. |
 | `run_tests` | `true` | Run `go test` before release. |
 | `test_flags` | `./...` | Flags passed to `go test`. |
+| `enable_cache` | `true` | Enable Go module cache for pre-release tests. |
+| `cache_dependency_path` | _empty_ | Newline-delimited glob list hashed for cache keys. |
+| `test_working_directory` | `.` | Directory where `go test` runs. |
+| `pre_test` | _empty_ | Shell snippet executed before `go test`. |
+| `coverage_profile` | _empty_ | Adds `-coverprofile` and stores the file at this path. |
+| `upload_coverage_artifact` | `false` | Upload the generated coverprofile artifact. |
+| `coverage_artifact_name` | `release-coverage` | Artifact name when uploading coverage. |
+| `race` | `false` | Run `go test` with `-race`. |
 | `download_artifacts` | `false` | Download workflow artifacts before publishing the release. |
 | `artifacts_path` | `release-artifacts` | Directory for downloaded artifacts. |
 | `artifact_glob` | _empty_ | Newline-delimited glob(s) (relative to the workspace after download) uploaded with the release. |
+| `tag_pattern` | `v*` | Pattern used to find the previous release tag. |
+| `prompt_extra` | _empty_ | Markdown appended to the Codex prompt. |
+| `codex_model` | _empty_ | Optional Codex model override. |
+| `codex_effort` | _empty_ | Optional reasoning effort override. |
+| `codex_args` | _empty_ | Extra flags forwarded to `codex exec`. |
+| `codex_safety_strategy` | `drop-sudo` | Safety strategy for Codex (drop-sudo/read-only/etc.). |
 
 Outputs:
 
@@ -139,6 +158,11 @@ Outputs:
 | Input | Default | Notes |
 | --- | --- | --- |
 | `max_labels` | `3` | Upper bound (1–3) on labels applied to each issue. |
+| `model` | `gpt-5` | Codex model used for label generation. |
+| `effort` | `medium` | Codex reasoning effort. |
+| `safety_strategy` | `drop-sudo` | Sandbox mode for Codex. |
+| `codex_args` | _empty_ | Extra CLI arguments forwarded to `codex exec`. |
+| `create_missing_labels` | `true` | Allow creating labels that don’t exist yet. |
 
 `codex-doc-sync.yml` inputs:
 
@@ -152,20 +176,63 @@ Outputs:
 ## Repository layout
 
 ```
-.github/
-  actions/
-    codex-collect/      # Local composite action for gathering PR metadata.
-  prompts/
-    codex-review.md     # Shared prompt used by Codex review workflow.
-    codex-review-schema.json
-  scripts/
-    codex/
+prompts/
+  codex-review.md
+  codex-review-schema.json
+  codex-release-template.md
+  codex-release-schema.json
+  codex-auto-label.md
+  codex-auto-label-schema.json
+  codex-doc-sync.md
+actions/
+  common/
+    checkout-target/
+    checkout-shared/
+  codex-review/
+    collect-context/
+    prepare-prompt/
+    run-review/
+    normalize-output/
+    submit-review/
+    lib/
       normalize-review.cjs
       submit-review.js
+  auto-label/
+    prepare/
+    run/
+    apply/
+  release/
+    determine-range/
+    prepare-prompt/
+    generate-highlights/
+    render-notes/
+  doc-sync/
+    context/
+    prepare/
+    build-prompt/
+    edit/
+    push/
+workflows/
+workflow-templates/
+cli/
+docs/
+  workflows/
+tests/
+scripts/
+.github/
   workflows/
     codex-review.yml
     go-tests.yml
+    release.yml
+    auto-label.yml
+    codex-doc-sync.yml
+plan.md
 ```
+
+## Refactor roadmap
+
+- **Phase 0 (current):** establish automation-hub scaffolding directories and centralize prompts under `prompts/` so downstream assets can consume them without cloning `.github/prompts`. Track work in `plan.md`.
+- **Upcoming phases:** migrate each workflow into modular composites, add workflow templates + CLI surface, expand docs/tests, and cut a `v1.0.0` release once all assets live in the new layout.
 
 ## Development
 

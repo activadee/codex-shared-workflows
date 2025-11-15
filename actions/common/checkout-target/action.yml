@@ -1,0 +1,34 @@
+name: "Checkout target repository"
+description: "Check out the calling repository with sensible defaults for PR workflows."
+inputs:
+  ref:
+    description: "Commit SHA, ref, or branch to checkout. Defaults to PR head or workflow SHA."
+    required: false
+    default: ""
+  repository:
+    description: "Repository to checkout (owner/name). Defaults to caller repository."
+    required: false
+    default: ""
+  fetch-depth:
+    description: "Depth for history fetch. 0 fetches all history."
+    required: false
+    default: "0"
+  path:
+    description: "Path where the repository will be checked out."
+    required: false
+    default: "."
+  token:
+    description: "Token used for checkout (defaults to automatic token)."
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ inputs.repository != '' && inputs.repository || github.repository }}
+        ref: ${{ inputs.ref != '' && inputs.ref || (github.event.pull_request.head.sha || github.sha) }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        token: ${{ inputs.token != '' && inputs.token || github.token }}
+        path: ${{ inputs.path }}

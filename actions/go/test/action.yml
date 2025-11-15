@@ -1,0 +1,89 @@
+name: "Run go test"
+description: "Execute go test with configurable flags, working directory, and optional coverage."
+inputs:
+  working-directory:
+    description: "Directory to run go test from."
+    required: false
+    default: "."
+  test-flags:
+    description: "Arguments appended to go test (e.g. ./... -run TestFoo)."
+    required: false
+    default: "./..."
+  coverage-profile:
+    description: "Optional coverprofile path (relative to working-directory)."
+    required: false
+    default: ""
+  race:
+    description: "Enable -race flag."
+    required: false
+    default: "false"
+outputs:
+  coverage_profile:
+    description: "Relative coverage profile path when generated."
+    value: ${{ steps.run.outputs.coverage_profile }}
+  coverage_profile_abs:
+    description: "Absolute coverage profile path when generated."
+    value: ${{ steps.run.outputs.coverage_profile_abs }}
+runs:
+  using: "composite"
+  steps:
+    - id: run
+      name: Run go test
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        TEST_FLAGS: ${{ inputs.test-flags }}
+        COVERAGE_PROFILE: ${{ inputs.coverage-profile }}
+        RACE: ${{ inputs.race }}
+      run: |
+        set -euo pipefail
+        cd "$WORKING_DIRECTORY"
+
+        coverage_flag=""
+        if [ -n "$COVERAGE_PROFILE" ]; then
+          rm -f "$COVERAGE_PROFILE"
+          coverage_flag="-covermode=atomic -coverprofile=$COVERAGE_PROFILE"
+        fi
+
+        race_flag=""
+        shopt -s nocasematch || true
+        if [[ "$RACE" == "true" ]]; then
+          race_flag="-race"
+        fi
+        shopt -u nocasematch || true
+
+        cmd=(go test)
+        if [ -n "$race_flag" ]; then
+          cmd+=("$race_flag")
+        fi
+        if [ -n "$coverage_flag" ]; then
+          cmd+=("$coverage_flag")
+        fi
+
+        if [ -n "$TEST_FLAGS" ]; then
+          # shellcheck disable=SC2206
+          flags=( $TEST_FLAGS )
+          cmd+=("${flags[@]}")
+        fi
+
+        printf '+ %s\n' "${cmd[*]}"
+        "${cmd[@]}"
+
+        rel_path=""
+        abs_path=""
+        if [ -n "$COVERAGE_PROFILE" ] && [ -f "$COVERAGE_PROFILE" ]; then
+          rel_path="$COVERAGE_PROFILE"
+          if command -v realpath >/dev/null 2>&1; then
+            abs_path="$(realpath -m "$COVERAGE_PROFILE")"
+          else
+            abs_path="$(python3 - <<'PY'
+import os
+print(os.path.abspath(os.path.normpath(os.environ['COVERAGE_PROFILE'])))
+PY
+)"
+          fi
+        fi
+        {
+          echo "coverage_profile=$rel_path"
+          echo "coverage_profile_abs=$abs_path"
+        } >> "$GITHUB_OUTPUT"

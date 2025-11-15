@@ -1,0 +1,24 @@
+name: "Run optional pre-test script"
+description: "Execute a repository-provided script before running Go tests."
+inputs:
+  script:
+    description: "Shell snippet executed before go test."
+    required: false
+    default: ""
+  working-directory:
+    description: "Directory where the script should run."
+    required: false
+    default: "."
+runs:
+  using: "composite"
+  steps:
+    - name: Execute custom setup
+      if: ${{ inputs.script != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        USER_SCRIPT: ${{ inputs.script }}
+      run: |
+        set -euo pipefail
+        echo "Running pre-test script in $(pwd)"
+        eval "$USER_SCRIPT"

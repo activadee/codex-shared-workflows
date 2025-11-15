@@ -1,0 +1,17 @@
+name: "Normalize Codex review output"
+description: "Convert Codex JSON into GitHub review artifacts, deduplicating and validating diff positions."
+inputs:
+  output-path:
+    description: "Path to the Codex output JSON file."
+    required: false
+    default: "codex-output.json"
+runs:
+  using: "composite"
+  steps:
+    - name: Normalize results
+      shell: bash
+      env:
+        CODEX_REVIEW_OUTPUT_PATH: ${{ inputs.output-path }}
+      run: |
+        set -euo pipefail
+        node "$GITHUB_ACTION_PATH/../lib/normalize-review.cjs"

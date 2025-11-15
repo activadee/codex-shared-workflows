@@ -1,0 +1,73 @@
+name: "Prepare Codex release prompt"
+description: "Populate the release prompt template with tag metadata and commit summaries."
+inputs:
+  tag-name:
+    description: "Release tag provided by the caller."
+    required: true
+  range-description:
+    description: "Text describing the commit range (e.g., v0.1.0..HEAD)."
+    required: true
+  commits-path:
+    description: "File containing the commit bullet list."
+    required: true
+  prompt-extra:
+    description: "Optional markdown appended to the prompt."
+    required: false
+    default: ""
+  prompt-path:
+    description: "Destination prompt file."
+    required: false
+    default: "codex_prompt.md"
+  template-path:
+    description: "Override for the base prompt template."
+    required: false
+    default: "prompts/codex-release-template.md"
+outputs:
+  prompt_path:
+    description: "Path to the populated prompt file."
+    value: ${{ steps.prompt.outputs.prompt_path }}
+  output_schema:
+    description: "JSON schema for Codex release output."
+    value: ${{ steps.schema.outputs.schema }}
+runs:
+  using: "composite"
+  steps:
+    - id: prompt
+      shell: bash
+      env:
+        TAG_NAME: ${{ inputs.tag-name }}
+        RANGE_DESCRIPTION: ${{ inputs.range-description }}
+        COMMITS_PATH: ${{ inputs.commits-path }}
+        PROMPT_PATH: ${{ inputs.prompt-path }}
+        PROMPT_EXTRA: ${{ inputs.prompt-extra }}
+        TEMPLATE_PATH_INPUT: ${{ inputs.template-path }}
+      run: |
+        set -euo pipefail
+        repo_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        template_path="${repo_root}/${TEMPLATE_PATH_INPUT}"
+        if [ ! -f "$template_path" ]; then
+          echo "Template not found: $template_path" >&2
+          exit 1
+        fi
+        cp "$template_path" "$PROMPT_PATH"
+        {
+          echo
+          echo "Release tag: $TAG_NAME"
+          echo "Commit range: $RANGE_DESCRIPTION"
+          echo
+          echo "Commits:"
+          cat "$COMMITS_PATH"
+        } >> "$PROMPT_PATH"
+        if [ -n "$PROMPT_EXTRA" ]; then
+          printf '\n\n%s\n' "$PROMPT_EXTRA" >> "$PROMPT_PATH"
+        fi
+        echo "prompt_path=$PROMPT_PATH" >> "$GITHUB_OUTPUT"
+
+    - id: schema
+      shell: bash
+      run: |
+        set -euo pipefail
+        repo_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        schema_path="$repo_root/prompts/codex-release-schema.json"
+        schema=$(jq -c . "$schema_path")
+        echo "schema=$schema" >> "$GITHUB_OUTPUT"
