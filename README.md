@@ -158,6 +158,11 @@ Outputs:
 | Input | Default | Notes |
 | --- | --- | --- |
 | `max_labels` | `3` | Upper bound (1–3) on labels applied to each issue. |
+| `model` | `gpt-5` | Codex model used for label generation. |
+| `effort` | `medium` | Codex reasoning effort. |
+| `safety_strategy` | `drop-sudo` | Sandbox mode for Codex. |
+| `codex_args` | _empty_ | Extra CLI arguments forwarded to `codex exec`. |
+| `create_missing_labels` | `true` | Allow creating labels that don’t exist yet. |
 
 `codex-doc-sync.yml` inputs:
 
@@ -192,6 +197,10 @@ actions/
     lib/
       normalize-review.cjs
       submit-review.js
+  auto-label/
+    prepare/
+    run/
+    apply/
   release/
     determine-range/
     prepare-prompt/

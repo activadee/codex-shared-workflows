@@ -124,20 +124,13 @@ codex-automation-hub/
 3. Explore providing a workflow template (`workflow-templates/release-template.yml`) once CLI integration is ready.
 
 ### 4. `auto-label.yml`
-**Current state.** Already depends on local composites `auto-label-prepare` and `auto-label-apply`, but they require checking out the shared repo. Codex invocation is hard-coded for `gpt-5`/`medium` and lacks retry or deduplication support.
+**Status.** Refactor complete:
+- Introduced `actions/auto-label/{prepare,run,apply}` composites (legacy `.github/actions/*` now delegate to them).
+- Workflow exposes configurable Codex parameters and an option to disable creation of new labels; it also publishes outputs listing the applied labels.
 
-**Target architecture.**
-- Migrate existing composite actions into `actions/auto-label/*` packaged with dependencies so consumers don’t need to checkout the repo.
-- Add `actions/auto-label/run` wrapper around `activadee/codex-action` with configurable parameters (`model`, `effort`, `confidence_threshold`, `max_new_labels`). Include logic to reuse existing labels, avoid duplicates, and optionally create missing labels when allowed.
-- Reusable workflow exposes advanced inputs (issue types, label allowlist/blocklist, min token threshold) and outputs (applied labels, reason summary).
-- CLI command `codex label` lets maintainers preview label suggestions before enabling the workflow.
-
-**Implementation steps.**
-1. Move `auto-label-prepare` script (which currently writes prompt/schema) into `actions/auto-label/prepare` using Node for easier schema generation.
-2. Add `auto-label/run` composite for Codex invocation with exponential backoff + error surfaces.
-3. Expand `auto-label/apply` to support `dry_run` mode (for CLI) and to report metrics via step summary.
-4. Update workflow to call these composites and to emit JSON artifact of Codex output for debugging.
-5. Document configuration recipes (triage/backlog) and CLI preview instructions.
+**Follow-ups.**
+1. Add advanced filtering (`allowlist`/`blocklist`) and dry-run previews to the apply step before rolling out CLI parity.
+2. Create `tests/actions/auto-label.yml` to smoke-test the workflow via `act`.
 
 ### 5. `codex-doc-sync.yml`
 **Current state.** Three-job workflow (`prepare_inputs`, `edit_docs`, `push_docs`) relying heavily on bespoke composite actions (`doc-sync-*`). Requires repeated checkouts and manual artifact juggling; logs are complex and failures are hard to debug.
@@ -186,7 +179,7 @@ codex-automation-hub/
 - [ ] **Phase 2 – Rework remaining workflows**
   - [x] Modularize `go-tests.yml` (actions/go, docs/workflows/go-tests.md, README/plan updates); tests pending.
   - [x] Modularize `release.yml` (actions/release, docs/workflows/release.md, README/plan updates); tests pending.
-  - [ ] Refactor `auto-label.yml` (planned).
+  - [x] Refactor `auto-label.yml` (actions/auto-label, docs/workflows/auto-label.md); additional filtering/tests pending.
   - [ ] Refactor `codex-doc-sync.yml` (planned).
 - [ ] **Phase 3 – CLI + templates**
 - [ ] **Phase 4 – Adoption / deprecation**

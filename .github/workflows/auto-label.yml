@@ -8,6 +8,31 @@ on:
         required: false
         type: number
         default: 3
+      model:
+        description: Codex model override (defaults to gpt-5).
+        required: false
+        type: string
+        default: gpt-5
+      effort:
+        description: Codex reasoning effort.
+        required: false
+        type: string
+        default: medium
+      safety_strategy:
+        description: Safety strategy passed to Codex (drop-sudo/read-only/etc.).
+        required: false
+        type: string
+        default: drop-sudo
+      codex_args:
+        description: Additional CLI arguments forwarded to Codex.
+        required: false
+        type: string
+        default: ""
+      create_missing_labels:
+        description: Allow creation of labels that do not exist yet.
+        required: false
+        type: boolean
+        default: true
     secrets:
       CODEX_AUTH_JSON_B64:
         description: Base64 encoded auth.json for Codex CLI.
@@ -19,6 +44,9 @@ jobs:
     permissions:
       contents: read
       issues: write
+    outputs:
+      applied_labels: ${{ steps.apply.outputs.applied_labels }}
+      applied_labels_json: ${{ steps.apply.outputs.applied_labels_json }}
     steps:
       - name: Checkout target repository
         uses: actions/checkout@v5
@@ -27,30 +55,33 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: activadee/codex-shared-workflows
-          ref: main
+          ref: ${{ github.action_ref || 'main' }}
           path: __codex_shared
 
       - name: Prepare Codex auto-label assets
         id: prepare
-        uses: ./__codex_shared/.github/actions/auto-label-prepare
+        uses: ./__codex_shared/actions/auto-label/prepare
         with:
           max-labels: ${{ inputs.max_labels }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate labels with Codex
         id: run_codex
-        uses: activadee/codex-action@main
+        uses: ./__codex_shared/actions/auto-label/run
         with:
           codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
-          safety-strategy: drop-sudo
-          prompt-file: codex_prompt.md
-          output-file: codex-output.json
+          prompt-path: codex_prompt.md
+          output-path: codex-output.json
           output-schema: ${{ steps.prepare.outputs.codex-output-schema }}
-          model: gpt-5
-          effort: medium
+          safety-strategy: ${{ inputs.safety_strategy }}
+          model: ${{ inputs.model }}
+          effort: ${{ inputs.effort }}
+          codex-args: ${{ inputs.codex_args }}
 
       - name: Apply labels
-        uses: ./__codex_shared/.github/actions/auto-label-apply
+        id: apply
+        uses: ./__codex_shared/actions/auto-label/apply
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           max-labels: ${{ steps.prepare.outputs.max-labels }}
+          create-missing-labels: ${{ inputs.create_missing_labels }}
