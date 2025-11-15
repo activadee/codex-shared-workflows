@@ -73,14 +73,14 @@ jobs:
 
       - name: Prepare Codex prompt
         run: |
-          cp __codex_shared/.github/prompts/codex-review.md codex_prompt.md
+          cp __codex_shared/prompts/codex-review.md codex_prompt.md
           if [ -n "${{ inputs.prompt_extra }}" ]; then
             printf '\n\n%s\n' "${{ inputs.prompt_extra }}" >> codex_prompt.md
           fi
 
       - name: Load Codex output schema
         run: |
-          echo "CODEX_OUTPUT_SCHEMA=$(jq -c . __codex_shared/.github/prompts/codex-review-schema.json)" >> "$GITHUB_ENV"
+          echo "CODEX_OUTPUT_SCHEMA=$(jq -c . __codex_shared/prompts/codex-review-schema.json)" >> "$GITHUB_ENV"
 
       - name: Run Codex review
         id: run_codex

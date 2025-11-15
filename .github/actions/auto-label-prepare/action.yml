@@ -79,7 +79,7 @@ runs:
             .filter(Boolean);
 
           const promptTemplate = fs.readFileSync(
-            path.join('__codex_shared', '.github', 'prompts', 'codex-auto-label.md'),
+            path.join('__codex_shared', 'prompts', 'codex-auto-label.md'),
             'utf8'
           );
 
@@ -133,5 +133,5 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        schema=$(jq -c . __codex_shared/.github/prompts/codex-auto-label-schema.json)
+        schema=$(jq -c . __codex_shared/prompts/codex-auto-label-schema.json)
         echo "schema=$schema" >> "$GITHUB_OUTPUT"

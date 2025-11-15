@@ -152,12 +152,27 @@ Outputs:
 ## Repository layout
 
 ```
+prompts/
+  codex-review.md
+  codex-review-schema.json
+  codex-release-template.md
+  codex-release-schema.json
+  codex-auto-label.md
+  codex-auto-label-schema.json
+  codex-doc-sync.md
+actions/                # Placeholder for modular composites (Phase 0 scaffolding).
+workflows/              # Will host next-gen reusable workflows.
+workflow-templates/     # Future starter workflows exposed via GitHub UI.
+cli/                    # Workspace for Codex CLI / gh extension sources.
+docs/                   # In-flight documentation hub for actions + CLI.
+tests/                  # Action + CLI automated tests.
+scripts/                # Helper scripts (validation, sync tooling).
 .github/
   actions/
-    codex-collect/      # Local composite action for gathering PR metadata.
-  prompts/
-    codex-review.md     # Shared prompt used by Codex review workflow.
-    codex-review-schema.json
+    codex-collect/
+    auto-label-prepare/
+    auto-label-apply/
+    doc-sync-*/
   scripts/
     codex/
       normalize-review.cjs
@@ -165,7 +180,16 @@ Outputs:
   workflows/
     codex-review.yml
     go-tests.yml
+    release.yml
+    auto-label.yml
+    codex-doc-sync.yml
+plan.md                 # Refactor blueprint (Phase 0 deliverable).
 ```
+
+## Refactor roadmap
+
+- **Phase 0 (current):** establish automation-hub scaffolding directories and centralize prompts under `prompts/` so downstream assets can consume them without cloning `.github/prompts`. Track work in `plan.md`.
+- **Upcoming phases:** migrate each workflow into modular composites, add workflow templates + CLI surface, expand docs/tests, and cut a `v1.0.0` release once all assets live in the new layout.
 
 ## Development
 

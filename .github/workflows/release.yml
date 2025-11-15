@@ -124,7 +124,7 @@ jobs:
             COMMITS="- No new commits detected."
           fi
 
-          TEMPLATE=$(cat __codex_shared/.github/prompts/codex-release-template.md)
+          TEMPLATE=$(cat __codex_shared/prompts/codex-release-template.md)
 
           cat <<EOF > codex_prompt.md
           ${TEMPLATE}
@@ -137,7 +137,7 @@ jobs:
           EOF
 
       - name: Load release schema
-        run: echo "CODEX_OUTPUT_SCHEMA=$(jq -c . __codex_shared/.github/prompts/codex-release-schema.json)" >> "$GITHUB_ENV"
+        run: echo "CODEX_OUTPUT_SCHEMA=$(jq -c . __codex_shared/prompts/codex-release-schema.json)" >> "$GITHUB_ENV"
 
       - name: Generate release highlights with Codex
         uses: activadee/codex-action@main

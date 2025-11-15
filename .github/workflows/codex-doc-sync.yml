@@ -102,7 +102,7 @@ jobs:
           pr_number: ${{ steps.context.outputs.number }}
           repository: ${{ steps.context.outputs.repository }}
           report_path: ${{ env.DOC_REPORT_PATH }}
-          template_path: __codex_shared/.github/prompts/codex-doc-sync.md
+          template_path: __codex_shared/prompts/codex-doc-sync.md
           doc_globs_path: ${{ env.DOC_GLOBS_FILE }}
           prompt_path: codex_prompt.md
           commits_path: ${{ env.DOC_COMMITS_PATH }}
