@@ -50,7 +50,7 @@ on:
         description: Optional Codex model override.
         required: false
         type: string
-        default: gpt-5.1-mini
+        default: gpt-5.1-codex-mini
       effort:
         description: Optional Codex reasoning effort override.
         required: false

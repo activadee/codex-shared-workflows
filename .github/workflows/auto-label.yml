@@ -9,10 +9,10 @@ on:
         type: number
         default: 3
       model:
-        description: Codex model override (defaults to gpt-5.1-mini).
+        description: Codex model override (defaults to gpt-5.1-codex-mini).
         required: false
         type: string
-        default: gpt-5.1-mini
+        default: gpt-5.1-codex-mini
       effort:
         description: Codex reasoning effort.
         required: false

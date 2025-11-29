@@ -31,7 +31,7 @@ Reusable workflow path: `.github/workflows/release.yml`
 | `artifact_glob` | _(empty)_ | Glob (relative to `artifacts_path`) passed to `softprops/action-gh-release`. |
 | `tag_pattern` | `v*` | Pattern used when locating the previous release tag. |
 | `prompt_extra` | _(empty)_ | Markdown appended to the Codex release prompt. |
-| `codex_model` | `gpt-5.1-mini` | Codex model used for release notes by default (can be overridden explicitly). |
+| `codex_model` | `gpt-5.1-codex-mini` | Codex model used for release notes by default (can be overridden explicitly). |
 | `codex_effort` | _(empty)_ | Optional reasoning effort override. |
 | `codex_args` | _(empty)_ | Additional CLI flags forwarded to Codex. |
 | `codex_safety_strategy` | `drop-sudo` | Codex sandbox mode (`drop-sudo`, `read-only`, etc.). |

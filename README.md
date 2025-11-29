@@ -165,7 +165,7 @@ Outputs:
 | Input | Default | Notes |
 | --- | --- | --- |
 | `max_labels` | `3` | Upper bound (1–3) on labels applied to each issue. |
-| `model` | `gpt-5.1-mini` | Codex model used for label generation (cost-optimized default). |
+| `model` | `gpt-5.1-codex-mini` | Codex model used for label generation (cost-optimized default). |
 | `effort` | `medium` | Codex reasoning effort. |
 | `safety_strategy` | `drop-sudo` | Sandbox mode for Codex. |
 | `codex_args` | _empty_ | Extra CLI arguments forwarded to `codex exec`. |
@@ -204,14 +204,14 @@ Outputs:
 | `max_diff_bytes` | `600000` | Truncates the git diff fed to Codex to control prompt size. |
 | `prompt_extra` | _empty_ | Additional markdown appended to the shared doc-sync prompt. |
 | `safety_strategy` | `drop-sudo` | Passed to `activadee/codex-action`. |
-| `model` | `gpt-5.1-mini` | Default Codex model used for doc sync (can be overridden explicitly). |
+| `model` | `gpt-5.1-codex-mini` | Default Codex model used for doc sync (can be overridden explicitly). |
 | `effort` | _empty_ | Optional reasoning effort override. |
 | `codex_args` | _empty_ | Extra CLI flags forwarded to `codex exec`. |
 | `pass_through_env` | `GH_TOKEN,GITHUB_TOKEN` | Env vars forwarded to Codex so it can run `git`/`gh` commands with the right credentials. |
 
 ## LLM model configuration
 
-To reduce token usage and standardize behavior, the following reusable workflows default to a small, cost-efficient model (`gpt-5.1-mini`):
+To reduce token usage and standardize behavior, the following reusable workflows default to a small, cost-efficient model (`gpt-5.1-codex-mini`):
 
 - Labeling: `.github/workflows/auto-label.yml` (input `model`)
 - Release notes: `.github/workflows/release.yml` (input `codex_model`)

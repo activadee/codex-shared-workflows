@@ -11,7 +11,7 @@ Reusable workflow path: `.github/workflows/auto-label.yml`
 | Name | Default | Description |
 | --- | --- | --- |
 | `max_labels` | `3` | Upper bound on labels applied per issue (clamped between 1 and 3). |
-| `model` | `gpt-5.1-mini` | Codex model used during auto-labeling. |
+| `model` | `gpt-5.1-codex-mini` | Codex model used during auto-labeling. |
 | `effort` | `medium` | Codex reasoning effort. |
 | `safety_strategy` | `drop-sudo` | Codex sandbox mode. |
 | `codex_args` | _(empty)_ | Additional CLI arguments forwarded to `codex exec`. |
@@ -30,7 +30,7 @@ auto-label:
   secrets: inherit
   with:
     max_labels: 3
-    model: gpt-5.1-mini
+    model: gpt-5.1-codex-mini
     create_missing_labels: true
 ```
 
