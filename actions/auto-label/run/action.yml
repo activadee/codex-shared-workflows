@@ -22,7 +22,7 @@ inputs:
   model:
     description: "Optional Codex model override."
     required: false
-    default: "gpt-5"
+    default: "gpt-5.1-mini"
   effort:
     description: "Optional reasoning effort override."
     required: false

@@ -111,7 +111,7 @@ on:
         description: Optional Codex model override for release notes.
         required: false
         type: string
-        default: ""
+        default: gpt-5.1-mini
       codex_effort:
         description: Optional Codex reasoning effort override.
         required: false

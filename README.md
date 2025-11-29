@@ -165,7 +165,7 @@ Outputs:
 | Input | Default | Notes |
 | --- | --- | --- |
 | `max_labels` | `3` | Upper bound (1–3) on labels applied to each issue. |
-| `model` | `gpt-5` | Codex model used for label generation. |
+| `model` | `gpt-5.1-mini` | Codex model used for label generation (cost-optimized default). |
 | `effort` | `medium` | Codex reasoning effort. |
 | `safety_strategy` | `drop-sudo` | Sandbox mode for Codex. |
 | `codex_args` | _empty_ | Extra CLI arguments forwarded to `codex exec`. |
@@ -204,10 +204,22 @@ Outputs:
 | `max_diff_bytes` | `600000` | Truncates the git diff fed to Codex to control prompt size. |
 | `prompt_extra` | _empty_ | Additional markdown appended to the shared doc-sync prompt. |
 | `safety_strategy` | `drop-sudo` | Passed to `activadee/codex-action`. |
-| `model` | _empty_ | Optional Codex model override. |
+| `model` | `gpt-5.1-mini` | Default Codex model used for doc sync (can be overridden explicitly). |
 | `effort` | _empty_ | Optional reasoning effort override. |
 | `codex_args` | _empty_ | Extra CLI flags forwarded to `codex exec`. |
 | `pass_through_env` | `GH_TOKEN,GITHUB_TOKEN` | Env vars forwarded to Codex so it can run `git`/`gh` commands with the right credentials. |
+
+## LLM model configuration
+
+To reduce token usage and standardize behavior, the following reusable workflows default to a small, cost-efficient model (`gpt-5.1-mini`):
+
+- Labeling: `.github/workflows/auto-label.yml` (input `model`)
+- Release notes: `.github/workflows/release.yml` (input `codex_model`)
+- Doc sync: `.github/workflows/doc-sync.yml` (input `model`)
+
+These defaults are defined directly in the workflow YAML and composite actions so they are visible and easy to audit. Repositories that consume these workflows may add their own validation (for example, a small shell script in CI) if they want to enforce or periodically check the configured model.
+
+Using a larger model for these workflows is an explicit, opt-in choice: callers may override the model via the inputs above (for example, `with: { model: "gpt-5.1" }` on auto-label or doc-sync, or `codex_model` on release). When doing so, prefer short-lived experiments and document the rationale in the calling repository to account for increased token usage.
 
 ## Repository layout
 

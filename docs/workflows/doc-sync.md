@@ -27,7 +27,7 @@ The workflow requests `contents: write` to push commits and `pull-requests: read
 | `max_diff_bytes` | `600000` | Size guardrail for the diff appended to the prompt. |
 | `prompt_extra` | _empty_ | Extra markdown appended at the end of the shared prompt. |
 | `safety_strategy` | `drop-sudo` | Passed to `activadee/codex-action`. |
-| `model` | _empty_ | Optional Codex model override. |
+| `model` | `gpt-5.1-mini` | Codex model used for doc sync by default (can be overridden explicitly). |
 | `effort` | _empty_ | Optional reasoning effort override. |
 | `codex_args` | _empty_ | Extra CLI switches forwarded to `codex exec`. |
 | `pass_through_env` | `GH_TOKEN,GITHUB_TOKEN` | Env vars forwarded to Codex so it can run `git`/`gh` commands with proper auth. |
