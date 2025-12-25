@@ -33,6 +33,8 @@ jobs:
     if: github.event.pull_request != null && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -66,7 +68,6 @@ jobs:
         env:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
         with:
           model: ${{ inputs.model }}
           prompt: ${{ steps.prompt.outputs.prompt }}
