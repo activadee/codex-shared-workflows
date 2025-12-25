@@ -57,3 +57,4 @@ jobs:
           model: ${{ inputs.model }}
           mentions: ${{ inputs.mentions }}
           share: true
+          use_github_token: true

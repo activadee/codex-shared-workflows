@@ -58,3 +58,4 @@ jobs:
             
             Apply appropriate labels to issue #${{ github.event.issue.number }}.
           share: false
+          use_github_token: true

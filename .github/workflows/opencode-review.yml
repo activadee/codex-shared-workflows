@@ -70,3 +70,4 @@ jobs:
           model: ${{ inputs.model }}
           prompt: ${{ steps.prompt.outputs.prompt }}
           share: ${{ inputs.share }}
+          use_github_token: true
