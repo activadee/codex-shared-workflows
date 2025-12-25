@@ -66,6 +66,7 @@ jobs:
         uses: sst/opencode/github@latest
         env:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           model: ${{ inputs.model }}
           prompt: ${{ steps.prompt.outputs.prompt }}
