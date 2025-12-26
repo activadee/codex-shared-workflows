@@ -23,11 +23,6 @@ on:
         description: MiniMax API key
         required: false
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
-
 concurrency:
   group: opencode-review-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
