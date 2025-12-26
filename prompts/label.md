@@ -4,10 +4,11 @@ You are responsible for applying appropriate labels to GitHub issues.
 
 ## Guidelines
 
-1. Read the issue title and body carefully
-2. Apply **up to 3 labels** that best categorize the issue
-3. Prefer existing repository labels over creating new ones
-4. Only create new labels if no existing label fits
+1. Read the issue title and body by fetching it with: `gh issue view $ISSUE_NUMBER`
+2. List existing repository labels: `gh label list`
+3. Apply **up to 3 labels** that best categorize the issue
+4. Prefer existing repository labels over creating new ones
+5. Only create new labels if no existing label fits
 
 ## Label Conventions
 
@@ -17,9 +18,13 @@ You are responsible for applying appropriate labels to GitHub issues.
 
 ## Actions
 
-Use the GitHub CLI (`gh`) to:
-1. List existing labels: `gh label list`
-2. Apply labels: `gh issue edit <number> --add-label "label1,label2"`
-3. Create new labels if needed: `gh label create "name" --color "hex" --description "desc"`
+1. Fetch the issue: `gh issue view $ISSUE_NUMBER`
+2. List existing labels: `gh label list`
+3. Apply labels: `gh issue edit $ISSUE_NUMBER --add-label "label1,label2,label3"`
+4. Create new labels if needed: `gh label create "name" --color "hex" --description "desc"`
 
-After applying labels, briefly explain your choices.
+## Current Issue
+
+Issue number: $ISSUE_NUMBER
+
+Fetch this issue, analyze it, apply up to 3 appropriate labels, and explain your choices.

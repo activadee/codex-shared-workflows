@@ -49,14 +49,9 @@ jobs:
                   MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   ISSUE_NUMBER: ${{ github.event.issue.number }}
-                  ISSUE_TITLE: ${{ github.event.issue.title }}
-                  ISSUE_BODY: ${{ github.event.issue.body }}
                   OPENCODE_PERMISSION: >
                       {"bash": {"gh issue*": "allow", "*": "deny"}, "webfetch": "deny"}
               run: |
                   opencode run -m ${{ inputs.model }} "$(cat .opencode-shared/prompts/label.md)
 
-                  Apply appropriate labels to issue #$ISSUE_NUMBER.
-
-                  Issue title: $ISSUE_TITLE
-                  Issue body: $ISSUE_BODY"
+                  Issue number: $ISSUE_NUMBER"
