@@ -1,0 +1,24 @@
+# Source files (dist is published)
+src/
+bin/
+tsconfig.json
+tsup.config.ts
+
+# Development
+.github/
+.gitignore
+.env*
+
+# IDE
+.idea/
+.vscode/
+
+# Tests
+*.test.ts
+coverage/
+
+# Documentation source (except README)
+docs/
+
+# Old prompts (bundled in dist)
+prompts/

@@ -1,50 +1,100 @@
-# OpenCode Shared Workflows
+# open-workflows
 
-Reusable GitHub Actions workflows powered by [OpenCode](https://opencode.ai) for automated code review, issue labeling, and documentation sync.
+AI-powered GitHub automation CLI for code reviews, issue labeling, and documentation sync.
 
-## Workflows
+Powered by [OpenCode](https://opencode.ai).
 
-| Workflow | Purpose | Trigger |
-|----------|---------|---------|
-| `opencode-review.yml` | AI-powered PR code review | `pull_request` events |
-| `opencode-label.yml` | Automatic issue labeling | `issues` events |
-| `opencode-doc-sync.yml` | Sync documentation with code changes | `pull_request` events |
-| `opencode-interactive.yml` | Slash-command handler (`/oc`, `/opencode`) | `issue_comment`, `pull_request_review_comment` |
+## Installation
 
-## Quick Start
+```bash
+# Use directly with npx (recommended)
+npx open-workflows <command>
 
-### 1. Install OpenCode GitHub App
+# Or install globally
+npm install -g open-workflows
+```
 
-Visit https://github.com/apps/opencode-agent and install it on your repository.
+## Commands
 
-### 2. Add API Key Secret
+### Review a PR
 
-Add `MINIMAX_API_KEY` to your repository secrets (Settings → Secrets → Actions).
+```bash
+# In GitHub Actions (auto-detects PR)
+npx open-workflows review
 
-Get your API key from [MiniMax](https://api.minimax.com).
+# Review specific PR
+npx open-workflows review --pr 123 --repo owner/repo
 
-### 3. Create Workflows
+# Review local changes
+npx open-workflows review --local
 
-#### PR Review (Auto-triggered)
+# Preview without posting
+npx open-workflows review --dry-run
+```
+
+### Label an Issue
+
+```bash
+# In GitHub Actions (auto-detects issue)
+npx open-workflows label
+
+# Label specific issue
+npx open-workflows label --issue 456 --repo owner/repo
+
+# Preview without applying
+npx open-workflows label --dry-run
+```
+
+### Sync Documentation
+
+```bash
+# In GitHub Actions
+npx open-workflows doc-sync
+
+# For local changes
+npx open-workflows doc-sync --local
+
+# Preview without committing
+npx open-workflows doc-sync --dry-run
+```
+
+### Interactive Mode
+
+Handles `/oc` and `/opencode` slash commands from GitHub comments.
+
+```bash
+# Only works in GitHub Actions
+npx open-workflows interactive
+```
+
+## GitHub Actions Usage
+
+### PR Review
 
 ```yaml
-# .github/workflows/pr-review.yml
 name: PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
 
 jobs:
   review:
-    uses: activadee/opencode-shared-workflows/.github/workflows/opencode-review.yml@main
-    secrets: inherit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx open-workflows review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-#### Issue Labeling (Auto-triggered)
+### Issue Labeling
 
 ```yaml
-# .github/workflows/issue-label.yml
 name: Issue Label
 
 on:
@@ -53,30 +103,42 @@ on:
 
 jobs:
   label:
-    uses: activadee/opencode-shared-workflows/.github/workflows/opencode-label.yml@main
-    secrets: inherit
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx open-workflows label
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-#### Doc Sync (Auto-triggered)
+### Doc Sync
 
 ```yaml
-# .github/workflows/doc-sync.yml
 name: Doc Sync
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize]
 
 jobs:
   sync:
-    uses: activadee/opencode-shared-workflows/.github/workflows/opencode-doc-sync.yml@main
-    secrets: inherit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx open-workflows doc-sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-#### Interactive (Slash Commands)
+### Interactive (Slash Commands)
 
 ```yaml
-# .github/workflows/opencode.yml
 name: OpenCode
 
 on:
@@ -87,68 +149,62 @@ on:
 
 jobs:
   opencode:
-    uses: activadee/opencode-shared-workflows/.github/workflows/opencode-interactive.yml@main
-    secrets: inherit
+    if: contains(github.event.comment.body, '/oc') || contains(github.event.comment.body, '/opencode')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx open-workflows interactive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-## Configuration
+## Options
 
-### Inputs
+| Option | Description |
+|--------|-------------|
+| `--pr <number>` | PR number to review |
+| `--issue <number>` | Issue number to label |
+| `--repo <owner/repo>` | Repository |
+| `--model <model>` | AI model (default: `minimax/MiniMax-M2.1`) |
+| `--local` | Use local git changes |
+| `--dry-run` | Preview without posting/committing |
+| `--verbose` | Detailed output |
 
-All workflows accept these optional inputs:
+## Environment Variables
 
-| Input | Default | Description |
-|-------|---------|-------------|
-| `model` | `minimax/MiniMax-M2.1` | Primary AI model |
-| `fallback_model` | `opencode/big-pickle` | Fallback if primary fails |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_TOKEN` | Yes (in CI) | GitHub authentication token |
+| `MINIMAX_API_KEY` | Yes | MiniMax API key for AI |
 
-### Secrets
+## Local Usage
 
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `MINIMAX_API_KEY` | Yes | MiniMax API key |
+The CLI works locally too! You need:
 
-### Model Options
+1. `gh` CLI installed and authenticated (`gh auth login`)
+2. `MINIMAX_API_KEY` environment variable set
 
-- **`minimax/MiniMax-M2.1`** - MiniMax's M2.1 model (200K context)
-- **`opencode/big-pickle`** - OpenCode's free model (200K context, no API key needed)
+```bash
+# Export your API key
+export MINIMAX_API_KEY=your-key-here
 
-## Slash Commands
+# Review a PR from your terminal
+npx open-workflows review --pr 123 --repo owner/repo
 
-When using `opencode-interactive.yml`, users can trigger OpenCode by commenting:
-
-```
-/oc explain this issue
-/opencode fix this bug
-/oc review this PR
-```
-
-## Repository Structure
-
-```
-opencode-shared-workflows/
-├── .github/workflows/
-│   ├── opencode-review.yml
-│   ├── opencode-label.yml
-│   ├── opencode-doc-sync.yml
-│   └── opencode-interactive.yml
-├── prompts/
-│   ├── review.md
-│   ├── label.md
-│   └── doc-sync.md
-├── docs/
-│   ├── setup.md
-│   └── workflows/
-├── opencode.json
-└── README.md
+# Review local uncommitted changes
+npx open-workflows review --local
 ```
 
-## Documentation
+## Requirements
 
-- [Setup Guide](docs/setup.md)
-- [Review Workflow](docs/workflows/review.md)
-- [Label Workflow](docs/workflows/label.md)
-- [Doc Sync Workflow](docs/workflows/doc-sync.md)
+- Node.js 18+
+- GitHub CLI (`gh`) for GitHub operations
+- OpenCode CLI (auto-installed if missing)
 
 ## License
 
